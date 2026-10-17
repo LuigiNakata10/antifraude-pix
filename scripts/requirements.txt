@@ -1,0 +1,6 @@
+# Dependencias SO dos scripts de demo (seed_demo.py e graph_demo.py). Ficam fora
+# do requirements-dev.txt e da imagem da API: a API nao desenha grafo.
+-r ../requirements-dev.txt
+
+networkx==3.7
+matplotlib==3.11.2

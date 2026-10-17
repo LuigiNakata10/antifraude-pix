@@ -76,3 +76,6 @@ coverage.xml
 # --- Tipagem estática --------------------------------------
 .mypy_cache/
 .ruff_cache/
+
+# --- Saidas geradas pela demo (scripts/seed_demo.py e graph_demo.py) ----
+output/demo/
