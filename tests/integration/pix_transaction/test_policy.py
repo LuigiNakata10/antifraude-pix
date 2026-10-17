@@ -1,22 +1,13 @@
 from datetime import timedelta
 
 from tests.utils import PixAccount, PixDestination
+from tests.utils.assertions import assert_decision
 
 REAL = 100  # R$ 1,00 em centavos: os cenários da política são escritos em reais.
 SECOND = timedelta(seconds=1)
 MINUTE = timedelta(minutes=1)
 HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
-
-
-def assert_decision(response: dict, status: str, code: str) -> dict:
-    """Confere o status e o único motivo, e devolve o `reason` para quem quiser conferir os valores."""
-    assert response["status"] == status, response
-    reason = response["metadata"]["reason"]
-    assert reason["code"] == code, response
-    assert response["metadata"]["policy_version"] == "pix-v1"
-
-    return reason
 
 
 class TestNewAccountLimit:

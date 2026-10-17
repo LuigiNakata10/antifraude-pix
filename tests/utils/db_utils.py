@@ -1,7 +1,7 @@
 from os import environ
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
 
@@ -67,5 +67,47 @@ class DbUtils:
         except OperationalError:
             message = DATABASE_OFFLINE.format(host=engine.url.host, port=engine.url.port)
             raise RuntimeError(message) from None
+        finally:
+            engine.dispose()
+
+    @staticmethod
+    def analysis_row(transaction_id: str) -> dict:
+        """A linha de auditoria de um Pix, só leitura: as colunas do DICT e o `analysis_details`.
+
+        Exceção consciente ao black box: o que o motor registra para auditoria
+        (E1 e E4 de cada conta, `dict_status`, estado, evidências e ato) nunca
+        volta na resposta, então só se confere olhando o banco. Os testes de
+        decisão continuam provando a decisão pela API.
+        """
+        engine = create_engine(DbUtils.database_url())
+        try:
+            with engine.connect() as connection:
+                row = connection.execute(
+                    text(
+                        "SELECT payer_dict_e1, payer_dict_e4, destination_dict_e1, destination_dict_e4, analysis_details "
+                        "FROM pix_analysis WHERE transaction_id = :transaction_id"
+                    ),
+                    {"transaction_id": transaction_id},
+                ).mappings().one()
+        finally:
+            engine.dispose()
+
+        return dict(row)
+
+    @staticmethod
+    def dict_lookup_count(account_key: str) -> int:
+        """Quantas respostas do DICT o motor guardou para a conta, só leitura.
+
+        Cada consulta AO VIVO que respondeu vira uma linha em `dict_lookup`; uma
+        leitura do cache não cria nenhuma. Por isso a contagem é o número de
+        chamadas ao DICT que deram certo, sem depender do log do Mockserver (que
+        fica lento à medida que cresce).
+        """
+        engine = create_engine(DbUtils.database_url())
+        try:
+            with engine.connect() as connection:
+                return connection.execute(
+                    text("SELECT COUNT(*) FROM dict_lookup WHERE account_key = :key"), {"key": account_key}
+                ).scalar()
         finally:
             engine.dispose()

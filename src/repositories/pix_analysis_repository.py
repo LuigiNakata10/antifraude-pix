@@ -6,7 +6,7 @@ from sqlalchemy import func
 
 from database import Context
 from models import PayerAccount, PixAnalysis
-from rules import AccountHistory, Decision, PixContext, PixRequest
+from rules import AccountHistory, Decision, DictSignals, MuleHistory, PixContext, PixRequest
 from rules.parameters import DAILY_WINDOW, FREQUENCY_WINDOW, POLICY_VERSION
 
 
@@ -32,7 +32,13 @@ class PixAnalysisRepository:
             .scalar()
         )
 
-    def build_context(self, payer_account: PayerAccount, request: PixRequest, dict_available: bool) -> PixContext:
+    def build_context(
+        self,
+        payer_account: PayerAccount,
+        request: PixRequest,
+        payer_dict: DictSignals,
+        destination_dict: DictSignals,
+    ) -> PixContext:
         """Monta o contexto único: tudo de que as regras precisam, em valores prontos.
 
         É o ÚNICO lugar que lê o histórico para a decisão, e só depois da trava
@@ -82,7 +88,41 @@ class PixAnalysisRepository:
                 attempts_2m=int(attempts),
                 first_device_approved_at=first_device_approval,
             ),
-            dict_available=dict_available,
+            payer_dict=payer_dict,
+            destination_dict=destination_dict,
+            mule=self._build_mule_history(payer_account, request),
+        )
+
+    def _build_mule_history(self, payer_account: PayerAccount, request: PixRequest) -> MuleHistory:
+        """O histórico do módulo de conta laranja, com a mesma convenção de janela e sem o Pix atual."""
+        t = request.transaction_date
+
+        def first_marked(column) -> Optional[datetime]:
+            return (
+                self.session.query(func.min(PixAnalysis.transaction_date))
+                .filter(
+                    PixAnalysis.destination_key == request.destination_key,
+                    column.is_(True),
+                    PixAnalysis.transaction_date <= t,
+                )
+                .scalar()
+            )
+
+        first_approval = (
+            self.session.query(func.min(PixAnalysis.transaction_date))
+            .filter(
+                PixAnalysis.payer_account_id == payer_account.id,
+                PixAnalysis.destination_document == request.destination_document,
+                PixAnalysis.status == "approved",
+                PixAnalysis.transaction_date <= t,
+            )
+            .scalar()
+        )
+
+        return MuleHistory(
+            destination_e1_since=first_marked(PixAnalysis.destination_dict_e1),
+            destination_e4_since=first_marked(PixAnalysis.destination_dict_e4),
+            first_approval_to_destination=first_approval,
         )
 
     def create(
@@ -92,7 +132,8 @@ class PixAnalysisRepository:
         payload: dict,
         decision: Decision,
         received_at: datetime,
-        analysis_details: dict,
+        payer_dict: DictSignals,
+        destination_dict: DictSignals,
     ) -> PixAnalysis:
         """Grava a análise, uma única vez, já com a decisão.
 
@@ -112,13 +153,17 @@ class PixAnalysisRepository:
         analysis.destination_key = request.destination_key
         analysis.destination_document = request.destination_document
         analysis.destination_opening_date = request.destination_opening_date
+        analysis.payer_dict_e1 = payer_dict.e1
+        analysis.payer_dict_e4 = payer_dict.e4
+        analysis.destination_dict_e1 = destination_dict.e1
+        analysis.destination_dict_e4 = destination_dict.e4
         analysis.received_at = received_at
         analysis.analyzed_at = datetime.now(timezone.utc)
         analysis.status = decision.status
         analysis.reason_code = decision.reason_code.value
         analysis.policy_version = POLICY_VERSION
         analysis.analysis_metadata = decision.to_metadata()
-        analysis.analysis_details = analysis_details
+        analysis.analysis_details = decision.analysis_details
         analysis.request_payload = payload
 
         self.session.add(analysis)

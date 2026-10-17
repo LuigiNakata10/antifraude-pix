@@ -18,6 +18,8 @@ class PayloadGenerator:
         payer_document: str = None,
         destination_account_number: str = None,
         destination_document: str = None,
+        destination_participant: str = "60701190",
+        destination_branch: str = "3675",
     ) -> dict:
         """Um Pix válido, no formato do desafio, com qualquer campo trocado a pedido.
 
@@ -39,11 +41,11 @@ class PayloadGenerator:
         if device_id is None:
             device_id = f"dvc-{uuid4().hex[:8]}"
         if source_account_number is None:
-            source_account_number = str(random.randrange(10**6, 10**7))
+            source_account_number = str(random.randrange(10**8, 10**9))
         if payer_document is None:
             payer_document = RandomGenerator.generate_cpf()
         if destination_account_number is None:
-            destination_account_number = str(random.randrange(10**4, 10**5))
+            destination_account_number = str(random.randrange(10**8, 10**9))
         if destination_document is None:
             destination_document = RandomGenerator.generate_cpf()
 
@@ -58,8 +60,8 @@ class PayloadGenerator:
                 "owner": {"document_number": payer_document},
             },
             "destination_account": {
-                "participant": "60701190",
-                "branch": "3675",
+                "participant": destination_participant,
+                "branch": destination_branch,
                 "account_number": destination_account_number,
                 "opening_date": destination_opening_date,
                 "owner": {"document_number": destination_document},

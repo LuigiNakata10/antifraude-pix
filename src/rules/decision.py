@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from rules.parameters import POLICY_VERSION
@@ -31,13 +31,19 @@ class Decision:
     limit_amount: Optional[int] = None
     observed_count: Optional[int] = None
     limit_count: Optional[int] = None
+    # Campos próprios das regras do módulo de conta laranja (conta, estado,
+    # evidências, ato): entram no `reason`, nunca com documento nem identidade.
+    reason_extra: dict = field(default_factory=dict)
+    # Auditoria interna: estados, evidências, ato e `dict_status`. NUNCA volta na resposta.
+    analysis_details: dict = field(default_factory=dict)
 
     def to_metadata(self) -> dict:
         """O `metadata` da resposta: a versão da política e só o motivo determinante."""
         reason = {"code": self.reason_code.value, "description": self.description}
-        for field in ("observed_amount", "limit_amount", "observed_count", "limit_count"):
-            value = getattr(self, field)
+        for name in ("observed_amount", "limit_amount", "observed_count", "limit_count"):
+            value = getattr(self, name)
             if value is not None:
-                reason[field] = value
+                reason[name] = value
+        reason.update(self.reason_extra)
 
         return {"policy_version": POLICY_VERSION, "reason": reason}

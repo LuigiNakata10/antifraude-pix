@@ -1,3 +1,6 @@
+import dataclasses
+
+from rules import laranja
 from rules.context import PixContext
 from rules.decision import Decision, Status
 from rules.parameters import (
@@ -21,8 +24,16 @@ def decide(context: PixContext) -> Decision:
 
     A ordem é uma convenção de explicação: R1 antes de R2 por ser a restrição
     específica da conta nova, e rejeição antes de 2FA. Um único motivo sai na
-    decisão, mesmo que outras regras também fossem acionadas.
+    decisão, mesmo que outras regras também fossem acionadas. O retrato do
+    módulo de conta laranja (estados, evidências, ato) acompanha QUALQUER
+    decisão em `analysis_details`, para auditoria.
     """
+    mule = laranja.evaluate(context)
+
+    return dataclasses.replace(_first_applicable(context, mule), analysis_details=mule.to_details())
+
+
+def _first_applicable(context: PixContext, mule: laranja.MuleResult) -> Decision:
     request = context.request
     history = context.history
     projected_amount = history.approved_amount_24h + request.amount
@@ -46,8 +57,11 @@ def decide(context: PixContext) -> Decision:
             limit_amount=DAILY_LIMIT,
         )
 
-    # L1, L2 e L3 (módulo de conta laranja) entram aqui, antes dos pedidos de 2FA:
-    # rejeição prevalece sobre 2FA.
+    # Módulo de conta laranja (L1, L2, L3), antes dos pedidos de 2FA: rejeição
+    # prevalece sobre 2FA.
+    mule_decision = laranja.mule_decision(mule)
+    if mule_decision is not None:
+        return mule_decision
 
     first_approval = history.first_device_approved_at
     device_is_known = first_approval is not None and request.transaction_date >= first_approval + DEVICE_WAIT

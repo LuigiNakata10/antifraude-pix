@@ -48,6 +48,15 @@ CREATE TABLE pix_analysis(
     destination_key                 TEXT NOT NULL,
     destination_document            TEXT NOT NULL CHECK (destination_document ~ '^(\d{11}|\d{14})$'),
     destination_opening_date        TIMESTAMPTZ NOT NULL,
+    -- O que o DICT disse de cada conta NO MOMENTO da decisão (E1: marcação de conta
+    -- laranja ou golpista; E4: notificações de infração abertas). NULL é
+    -- desconhecido (DICT indisponível), e desconhecido nunca conta como evidência.
+    -- Ficam em colunas porque o grafo as consulta: E2 soma o que a conta recebeu
+    -- de quem tinha E1 naquele Pix, e a primeira vez que o motor viu uma conta marcada.
+    payer_dict_e1                   BOOLEAN,
+    payer_dict_e4                   BOOLEAN,
+    destination_dict_e1             BOOLEAN,
+    destination_dict_e4             BOOLEAN,
     -- Auditoria; as regras usam `transaction_date`.
     received_at                     TIMESTAMPTZ NOT NULL,
     analyzed_at                     TIMESTAMPTZ NOT NULL,

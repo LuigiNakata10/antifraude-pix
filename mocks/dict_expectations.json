@@ -1,0 +1,21 @@
+[
+  {
+    "id": "dict-default-statistics",
+    "priority": 0,
+    "httpRequest": {"method": "GET", "path": "/dict/v1/statistics"},
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {"Content-Type": ["application/json"]},
+      "body": {
+        "OwnerStatistics": {
+          "FraudMarkers": {
+            "MuleAccounts": {"d90": 0, "m12": 0, "m60": 0},
+            "ScammerAccounts": {"d90": 0, "m12": 0, "m60": 0},
+            "DistinctFraudReporters": {"d90": 0, "m12": 0, "m60": 0}
+          },
+          "InfractionReports": {"OpenReports": 0, "OpenReportsDistinctReporters": 0}
+        }
+      }
+    }
+  }
+]

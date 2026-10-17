@@ -3,7 +3,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 
+from connectors import DictQuery
+from constants import INSTITUTION_ISPB
 from controllers.base_controller import BaseController
+from controllers.dict_controller import DictController
 from dtos import PixAnalysisDTO
 from errors import (
     AccountOpenedAfterTransaction,
@@ -15,6 +18,7 @@ from errors import (
 from models import PayerAccount, PixAnalysis
 from repositories import PayerAccountRepository, PixAnalysisRepository
 from rules import PixRequest, decide
+from rules.laranja import dict_signals
 from utils.payload_normalizer import normalize_payload
 
 
@@ -31,6 +35,7 @@ class PixTransactionController(BaseController):
         super().__init__(__name__)
         self.analysis_repository = PixAnalysisRepository(self.context)
         self.payer_account_repository = PayerAccountRepository(self.context)
+        self.dict_controller = DictController()
 
     def create(self, payload: dict) -> tuple:
         """Analisa um Pix e grava a decisão. Devolve (resposta, é_novo).
@@ -40,8 +45,8 @@ class PixTransactionController(BaseController):
           1. normalizar e conferir a coerência do pedido, ainda sem banco: o que
              é erro de entrada nunca consome limite nem conta em frequência;
           2. procurar o `id`: um Pix já analisado não é analisado de novo;
-          3. (etapa do DICT: a consulta entra aqui, FORA da transação, para a
-             trava da conta nunca ficar presa esperando a rede);
+          3. consultar o DICT, FORA da transação, para a trava da conta nunca
+             ficar presa esperando a rede. Indisponível vira "desconhecido";
           4. travar a conta pagadora (e criá-la se for a primeira vez);
           5. procurar o `id` DE NOVO: um reenvio pode ter concluído enquanto
              este pedido esperava a trava;
@@ -63,6 +68,8 @@ class PixTransactionController(BaseController):
         if existing is not None:
             return self.replay(existing, payload), False
 
+        payer_dict, destination_dict = self.consult_dict(request, payload)
+
         self.start_write_transaction()
         try:
             with self.lock_timeout_guard():
@@ -77,16 +84,10 @@ class PixTransactionController(BaseController):
 
                 self.ensure_in_order(payer_account, request)
 
-                # O DICT ainda não é consultado: E1 e E4 não existem nesta etapa.
-                context = self.analysis_repository.build_context(payer_account, request, dict_available=False)
+                context = self.analysis_repository.build_context(payer_account, request, payer_dict, destination_dict)
                 decision = decide(context)
                 analysis = self.analysis_repository.create(
-                    payer_account,
-                    request,
-                    payload,
-                    decision,
-                    received_at,
-                    analysis_details={"dict_status": "nao_consultado"},
+                    payer_account, request, payload, decision, received_at, payer_dict, destination_dict
                 )
                 self.session.flush()
         except IntegrityError as error:
@@ -105,6 +106,18 @@ class PixTransactionController(BaseController):
         self.session.commit()
 
         return response, True
+
+    def consult_dict(self, request: PixRequest, payload: dict) -> tuple:
+        """Pergunta ao DICT (ou ao cache) sobre o pagador e o destino e devolve (E1/E4 do pagador, E1/E4 do destino)."""
+        destination = payload["destination_account"]
+        payer_query = DictQuery(INSTITUTION_ISPB, request.payer_branch, request.payer_account_number, request.payer_document)
+        destination_query = DictQuery(
+            destination["participant"], destination["branch"], destination["account_number"], request.destination_document
+        )
+
+        payer, destination = self.dict_controller.lookup(payer_query, destination_query)
+
+        return dict_signals(payer.status, payer.response), dict_signals(destination.status, destination.response)
 
     def ensure_in_order(self, payer_account: PayerAccount, request: PixRequest) -> None:
         """Recusa o Pix anterior ao último já analisado da mesma conta (422).

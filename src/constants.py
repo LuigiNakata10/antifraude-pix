@@ -26,6 +26,19 @@ DICT_API_INTERNAL_TOKEN = os.environ.get("DICT_API_INTERNAL_TOKEN", "default_tok
 # de apoio custa mais do que decidir sem ela (E1 e E4 ficam desconhecidas).
 DICT_API_TIMEOUT = float(os.environ.get("DICT_API_TIMEOUT", "0.2"))
 
+# O ISPB do banco que roda este motor (fictício por padrão). O payload só traz o
+# ISPB do destino, então a conta pagadora é sempre desta instituição, e um
+# destino com este ISPB é uma conta nossa. Entra na chave "ispb:agência:conta"
+# do grafo e das consultas ao DICT.
+INSTITUTION_ISPB = os.environ.get("INSTITUTION_ISPB", "99999999")
+
+# Quanto tempo uma resposta do DICT guardada em `dict_lookup` vale. É frescor
+# TÉCNICO (relógio do servidor), não regra de negócio. O pagador é cliente do
+# banco e muda pouco: 24 h. O destino é consultado ao vivo a cada Pix e o cache
+# só serve de reserva se o DICT falhar: 1 h.
+DICT_PAYER_CACHE_TTL_SECONDS = 24 * 3600
+DICT_DESTINATION_CACHE_TTL_SECONDS = 3600
+
 # Rotas públicas: não exigem o header INTERNAL-TOKEN. São as duas que
 # precisam responder pra quem ainda não tem token nenhum: a raiz, que
 # diz quem é este serviço, e o health check, que o Docker consulta pra

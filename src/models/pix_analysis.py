@@ -1,4 +1,4 @@
-from sqlalchemy import CHAR, BigInteger, Column, DateTime, ForeignKey, Text, UniqueConstraint, func
+from sqlalchemy import CHAR, BigInteger, Boolean, Column, DateTime, ForeignKey, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -21,6 +21,10 @@ class PixAnalysis(Base):
     destination_key = Column(Text, nullable=False)
     destination_document = Column(Text, nullable=False)
     destination_opening_date = Column(DateTime(timezone=True), nullable=False)
+    payer_dict_e1 = Column(Boolean, nullable=True)
+    payer_dict_e4 = Column(Boolean, nullable=True)
+    destination_dict_e1 = Column(Boolean, nullable=True)
+    destination_dict_e4 = Column(Boolean, nullable=True)
     received_at = Column(DateTime(timezone=True), nullable=False)
     analyzed_at = Column(DateTime(timezone=True), nullable=False)
     status = Column(Text, nullable=False)

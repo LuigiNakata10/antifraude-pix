@@ -41,6 +41,9 @@ services:
       DICT_API_URL: ${DICT_API_URL:-http://mockserver:1080}
       DICT_API_INTERNAL_TOKEN: ${DICT_API_INTERNAL_TOKEN:-default_token}
       DICT_API_TIMEOUT: ${DICT_API_TIMEOUT:-0.2}
+      # O ISPB do banco que roda este motor. O payload so informa o ISPB do
+      # DESTINO; a conta pagadora e sempre desta instituicao. Valor ficticio.
+      INSTITUTION_ISPB: ${INSTITUTION_ISPB:-99999999}
     volumes:
       # Monta o codigo pra dentro do container: salvou o arquivo,
       # a API recarrega sozinha (o --reload ali embaixo).
@@ -60,6 +63,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mockserver:
+        condition: service_started
 
   db:
     build: ./database/.
@@ -78,9 +83,13 @@ services:
       retries: 20
 
   mockserver:
-    # Lugar reservado do DICT simulado: sobe vazio, e as respostas entram
-    # como expectations versionadas na etapa do DICT. A API nao espera por
-    # ele para subir: indisponivel vira "desconhecido", nunca erro de subida.
+    # O DICT simulado (em producao, a QI consulta o DICT de verdade). Sobe com
+    # as respostas de mocks/dict_expectations.json: por padrao, nenhuma conta
+    # tem marcacao. Os testes roteirizam as respostas pela API REST dele.
     image: mockserver/mockserver:5.15.0
+    environment:
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/dict_expectations.json
+    volumes:
+      - ./mocks:/config:ro
     ports:
       - "${MOCKSERVER_PORT:-1080}:1080"

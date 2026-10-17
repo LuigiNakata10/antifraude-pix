@@ -36,3 +36,31 @@ HIGH_AMOUNT = 5000 * 100
 # posteriores não reiniciam a espera: evita que um Pix pequeno aprovado
 # dispense o 2FA de imediato, sem prolongar a espera de quem usa a conta todo dia.
 DEVICE_WAIT = timedelta(hours=24)
+
+# ---------------------------------------------------------------------------
+# Módulo de conta laranja: o motor primeiro classifica a conta e depois decide
+# o ato. Os valores também são parâmetros do protótipo, não limiares validados.
+# ---------------------------------------------------------------------------
+
+# E1 — marcação no DICT (janela de 90 dias, `d90`): pelo menos uma conta laranja
+# ou golpista marcada, ou o titular marcado por 2 ou mais instituições. Uma
+# marcação de outra instituição é a semente mais forte que o motor tem: ele
+# deixa de depender só do que viu passar por ele.
+E1_REPORTERS_THRESHOLD = 2
+
+# E4 — notificações de infração abertas contra a conta, no DICT: 2 ou mais.
+# Uma só pode ser uma disputa; duas já são um padrão. E4 sozinha é só `suspeita`.
+E4_OPEN_REPORTS_THRESHOLD = 2
+
+# Janelas das evidências locais (E2, E3 e E5). Quando a janela passa, a
+# evidência some e o estado cai sozinho: não existe marcação local permanente.
+E2_WINDOW = timedelta(days=30)
+E3_WINDOW = timedelta(hours=1)
+E5_WINDOW = timedelta(hours=24)
+
+# Gasto típico — o padrão de quem usa a conta para a própria vida: até R$ 1.000
+# para um titular que o pagador já conhecia, ou para um CNPJ com conta de 90
+# dias ou mais. O teto e a exigência de CNPJ antigo existem para o repasse não
+# se disfarçar de "gasto" numa empresa de fachada recém-aberta.
+TYPICAL_SPEND_LIMIT = 1000 * 100
+ESTABLISHED_CNPJ_AGE = timedelta(days=90)

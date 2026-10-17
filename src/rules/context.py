@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -43,15 +43,57 @@ class AccountHistory:
 
 
 @dataclass(frozen=True)
+class DictSignals:
+    """O que o DICT disse de UMA conta, em sinais prontos, e como o motor soube.
+
+    `status` é `consultado` (resposta ao vivo), `cache` (resposta guardada,
+    usada quando o DICT falhou) ou `indisponivel`. `e1` e `e4` são `None`
+    quando desconhecidos: desconhecido nunca conta como evidência.
+    """
+
+    status: str
+    e1: Optional[bool]
+    e4: Optional[bool]
+
+
+@dataclass(frozen=True)
+class LocalEvidence:
+    """As evidências E2, E3 e E5 de uma conta, calculadas do histórico local."""
+
+    e2: bool = False
+    e3: bool = False
+    e5: bool = False
+
+
+@dataclass(frozen=True)
+class MuleHistory:
+    """O histórico de que o módulo de conta laranja precisa, lido do banco depois da trava.
+
+    Nenhum valor inclui o Pix atual. Só Pix `approved` contam como "recebido" ou
+    "enviado": "recebido" significa aprovado pelo motor, não liquidado.
+    """
+
+    # A `transaction_date` da primeira análise em que o motor viu o DESTINO
+    # marcado (E1) ou com notificações abertas (E4). `None` se nunca viu: o
+    # início da evidência é, então, o próprio Pix atual.
+    destination_e1_since: Optional[datetime] = None
+    destination_e4_since: Optional[datetime] = None
+    # A primeira aprovação deste pagador para este titular de destino. Dela saem
+    # o "destinatário conhecido" e a "relação anterior".
+    first_approval_to_destination: Optional[datetime] = None
+    payer_local: LocalEvidence = field(default_factory=LocalEvidence)
+    destination_local: LocalEvidence = field(default_factory=LocalEvidence)
+
+
+@dataclass(frozen=True)
 class PixContext:
     """Tudo de que a política precisa para decidir, montado por uma única camada.
 
-    As regras base e o módulo de conta laranja leem do mesmo contexto. Os
-    indicadores do módulo (estado da conta, evidências e ato) entram aqui na
-    etapa dele; `dict_available` já diz se E1 e E4 são conhecidas ou
-    desconhecidas, e desconhecido nunca conta como evidência.
+    As regras base e o módulo de conta laranja leem do mesmo contexto.
     """
 
     request: PixRequest
     history: AccountHistory
-    dict_available: bool
+    payer_dict: DictSignals
+    destination_dict: DictSignals
+    mule: MuleHistory
