@@ -111,3 +111,21 @@ class DbUtils:
                 ).scalar()
         finally:
             engine.dispose()
+
+    @staticmethod
+    def links_of(transaction_id: str) -> list:
+        """As arestas do grafo gravadas por um Pix, só leitura."""
+        engine = create_engine(DbUtils.database_url())
+        try:
+            with engine.connect() as connection:
+                rows = connection.execute(
+                    text(
+                        "SELECT l.link_type, l.from_key, l.to_key, l.amount FROM account_link l "
+                        "JOIN pix_analysis a ON a.id = l.pix_analysis_id WHERE a.transaction_id = :transaction_id"
+                    ),
+                    {"transaction_id": transaction_id},
+                ).mappings().all()
+        finally:
+            engine.dispose()
+
+        return [dict(row) for row in rows]

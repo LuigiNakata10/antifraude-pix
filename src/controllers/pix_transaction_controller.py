@@ -90,6 +90,8 @@ class PixTransactionController(BaseController):
                     payer_account, request, payload, decision, received_at, payer_dict, destination_dict
                 )
                 self.session.flush()
+                self.analysis_repository.links.create_edges(analysis, request)
+                self.session.flush()
         except IntegrityError as error:
             if not self.is_unique_violation(error):
                 raise
@@ -179,6 +181,7 @@ class PixTransactionController(BaseController):
             transaction_date=transaction_date,
             payer_branch=source["branch"],
             payer_account_number=source["account_number"],
+            payer_key=f"{INSTITUTION_ISPB}:{source['branch']}:{source['account_number']}",
             payer_document=only_digits(source["owner"]["document_number"]),
             source_opening_date=source_opening_date,
             device_id=payload["source"]["device_id"],

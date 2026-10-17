@@ -7,6 +7,7 @@ from sqlalchemy import func
 from database import Context
 from models import PayerAccount, PixAnalysis
 from rules import AccountHistory, Decision, DictSignals, MuleHistory, PixContext, PixRequest
+from repositories.account_link_repository import AccountLinkRepository
 from rules.parameters import DAILY_WINDOW, FREQUENCY_WINDOW, POLICY_VERSION
 
 
@@ -20,6 +21,7 @@ class PixAnalysisRepository:
 
     def __init__(self, context: Context) -> None:
         self.session = context.db_session
+        self.links = AccountLinkRepository(context)
 
     def get_by_transaction_id(self, transaction_id: str) -> PixAnalysis:
         return self.session.query(PixAnalysis).filter(PixAnalysis.transaction_id == transaction_id).first()
@@ -123,6 +125,8 @@ class PixAnalysisRepository:
             destination_e1_since=first_marked(PixAnalysis.destination_dict_e1),
             destination_e4_since=first_marked(PixAnalysis.destination_dict_e4),
             first_approval_to_destination=first_approval,
+            payer_flows=self.links.flows(request.payer_key, t, request.device_id),
+            destination_flows=self.links.flows(request.destination_key, t, None),
         )
 
     def create(

@@ -47,13 +47,13 @@ class PixAccount:
     anterior ao último já analisado da mesma conta.
     """
 
-    def __init__(self, age: timedelta = timedelta(days=365)) -> None:
+    def __init__(self, age: timedelta = timedelta(days=365), document: str = None, device_id: str = None) -> None:
         self.participant = INSTITUTION_ISPB
         self.branch = "0001"
         self.account_number = str(random.randrange(10**8, 10**9))
-        self.document = RandomGenerator.generate_cpf()
+        self.document = document or RandomGenerator.generate_cpf()
         self.opening_date = at(-age)
-        self.device_id = f"dvc-{uuid4().hex[:8]}"
+        self.device_id = device_id or f"dvc-{uuid4().hex[:8]}"
 
     @property
     def key(self) -> str:
@@ -107,6 +107,21 @@ class PixAccount:
         assert status == 201, response
         assert response["status"] == expected, response
         return response
+
+    def record(self, amount: int, when: timedelta = timedelta(0), **kwargs):
+        """Envia um Pix e devolve (resposta, id do Pix), para conferir a auditoria depois."""
+        transaction_id = f"pix-{uuid4().hex[:12]}"
+        status, response = self.pix(amount, when, transaction_id=transaction_id, **kwargs)
+        assert status == 201, response
+
+        return response, transaction_id
+
+    def fund(self, amount: int, when: timedelta, sender: "PixAccount" = None) -> "PixAccount":
+        """Alguém (uma conta nova, por padrão) paga esta conta e é aprovado. Devolve o pagador."""
+        sender = sender or PixAccount()
+        sender.send(amount, when, "approved", destination=self.as_destination())
+
+        return sender
 
     def make_device_known(self, device_id: str = None, hours_ago: int = 30) -> None:
         """Faz o aparelho da conta virar conhecido: primeira aprovação há `hours_ago` horas.

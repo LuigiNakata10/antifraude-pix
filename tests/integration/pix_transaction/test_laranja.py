@@ -2,9 +2,11 @@ from datetime import timedelta
 
 from tests.utils import DbUtils, DictMock, PixAccount, PixDestination, RandomGenerator, RequestGenerator
 from tests.utils.assertions import assert_decision
+from tests.utils.mule_scenarios import hub_receiving_from_new_senders
 
 REAL = 100  # R$ 1,00 em centavos
 MINUTE = timedelta(minutes=1)
+HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
 
 
@@ -67,6 +69,7 @@ class TestMuleAccountRules:
         assert reason["account"] == "payer"
         assert reason["account_state"] == "confirmada"
         assert reason["evidences"] == ["E1"]
+        assert reason["act"] == "repasse"
 
     def test_p05_a_marked_account_paying_a_new_person_is_rejected(self):
         """Mesmo sem entradas recentes: confirmada só faz gasto típico."""
@@ -93,3 +96,90 @@ class TestMuleAccountRules:
         assert row["analysis_details"]["dict_status"] == {"payer": "indisponivel", "destination": "indisponivel"}
         assert row["payer_dict_e1"] is None
         assert row["destination_dict_e1"] is None
+
+    def test_p06_a_hub_that_forwards_most_of_what_it_received_is_rejected(self):
+        """Recebeu de 6 titulares em 1 h (4 de primeira vez) e repassa 80% a uma pessoa física: E3 + repasse."""
+        hub = PixAccount()
+        hub_receiving_from_new_senders(hub, senders=6, first_time=4, each=1000 * REAL)
+
+        response, transaction_id = hub.record(4800 * REAL)
+
+        reason = assert_decision(response, "rejected", "SUSPECTED_MULE_FORWARDING")
+        assert reason["account"] == "payer"
+        assert reason["account_state"] == "suspeita"
+        assert reason["evidences"] == ["E3"]
+        assert reason["act"] == "repasse"
+        assert DbUtils.analysis_row(transaction_id)["analysis_details"]["act"] == "repasse"
+
+    def test_p07_the_same_account_paying_a_small_bill_is_approved(self):
+        """Suspeita só pesa no repasse: o mercado de R$ 90 passa."""
+        hub = PixAccount()
+        hub_receiving_from_new_senders(hub)
+        market = PixDestination(age=400 * DAY, document=RandomGenerator.generate_cnpj())
+
+        response, transaction_id = hub.record(90 * REAL, destination=market)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+        details = DbUtils.analysis_row(transaction_id)["analysis_details"]
+        assert details["payer"]["state"] == "suspeita"
+        assert details["act"] == "gasto_tipico"
+
+    def test_p08_a_shared_expense_paid_to_an_established_company_is_approved(self):
+        """Rateio: Ana recebe de 5 amigos e paga o restaurante. O destino é um CNPJ antigo, então não é repasse."""
+        ana = PixAccount()
+        hub_receiving_from_new_senders(ana, senders=5, first_time=5, each=240 * REAL)
+        restaurant = PixDestination(age=400 * DAY, document=RandomGenerator.generate_cnpj())
+
+        response, transaction_id = ana.record(1200 * REAL, destination=restaurant)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+        details = DbUtils.analysis_row(transaction_id)["analysis_details"]
+        assert details["payer"]["state"] == "suspeita"
+        assert details["act"] == "outro"
+
+    def test_p09_an_established_shop_that_received_from_a_marked_account_is_not_affected(self):
+        """Receber de boa-fé não trava ninguém: a padaria antiga tem muitas contrapartes e o dinheiro marcado é pouco."""
+        bakery = PixAccount(age=3650 * DAY, document=RandomGenerator.generate_cnpj())
+        for _ in range(10):
+            bakery.fund(10 * REAL, -2 * HOUR)
+        marked = PixAccount()
+        DictMock.mark(marked, mule=1)
+        marked.send(50 * REAL, -1 * HOUR, "approved", destination=bakery.as_destination())
+        supplier = PixDestination(age=400 * DAY, document=RandomGenerator.generate_cnpj())
+
+        response, transaction_id = bakery.record(300 * REAL, destination=supplier)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+        details = DbUtils.analysis_row(transaction_id)["analysis_details"]
+        assert details["payer"] == {"state": "nao", "evidences": []}
+
+    def test_p11_once_the_window_has_passed_the_same_account_is_no_longer_suspect(self):
+        """Oito dias depois, sem evidência nova: a janela de E3 passou e o estado caiu sozinho."""
+        hub = PixAccount()
+        hub_receiving_from_new_senders(hub, before=-8 * DAY)
+
+        response, transaction_id = hub.record(4800 * REAL)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+        assert DbUtils.analysis_row(transaction_id)["analysis_details"]["payer"]["state"] == "nao"
+
+    def test_p12_a_confirmed_young_account_can_still_pay_a_phone_bill(self):
+        """Conta de 3 dias com E3 + E5 é `confirmada`, mas gasto típico passa."""
+        young = PixAccount(age=3 * DAY)
+        hub_receiving_from_new_senders(young, senders=5, first_time=5, each=1300 * REAL)
+        phone_company = PixDestination(age=400 * DAY, document=RandomGenerator.generate_cnpj())
+
+        response, transaction_id = young.record(60 * REAL, destination=phone_company)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+        details = DbUtils.analysis_row(transaction_id)["analysis_details"]
+        assert details["payer"] == {"state": "confirmada", "evidences": ["E3", "E5"]}
+
+    def test_p13_the_same_young_account_forwarding_is_stopped_first_by_the_new_account_limit(self):
+        """A ordem: R1 já pega a conta nova acima de R$ 1.000, e é o motivo informado."""
+        young = PixAccount(age=3 * DAY)
+        hub_receiving_from_new_senders(young, senders=5, first_time=5, each=1300 * REAL)
+
+        _, response = young.pix(5000 * REAL)
+
+        assert_decision(response, "rejected", "NEW_ACCOUNT_LIMIT_EXCEEDED")

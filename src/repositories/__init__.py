@@ -1,3 +1,4 @@
+from repositories.account_link_repository import AccountLinkRepository
 from repositories.dict_lookup_repository import DictLookupRepository
 from repositories.payer_account_repository import PayerAccountRepository
 from repositories.pix_analysis_repository import PixAnalysisRepository

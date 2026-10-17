@@ -52,6 +52,39 @@ E1_REPORTERS_THRESHOLD = 2
 # Uma só pode ser uma disputa; duas já são um padrão. E4 sozinha é só `suspeita`.
 E4_OPEN_REPORTS_THRESHOLD = 2
 
+# E2 — o dinheiro e o aparelho de uma conta marcada no DICT (E1), 30 dias.
+# Só E1 propaga, e só um salto: a suspeita não anda em círculo nem em cadeia.
+# MAIS de 50% do que a conta recebeu em 30 dias veio de contas com E1 (a
+# proporção protege quem recebeu de boa-fé: R$ 1 mandado de propósito não pesa),
+# ou ela usou o mesmo aparelho de uma conta com E1.
+E2_SHARE_PERCENT = 50
+# Trava de reputação: E2 só vale para conta com menos de 90 dias OU menos de 10
+# contrapartes. Uma padaria antiga, com muitos clientes, não ganha E2.
+E2_REPUTATION_AGE = timedelta(days=90)
+E2_REPUTATION_COUNTERPARTIES = 10
+
+# E3 — muitos titulares enviando, a maioria pela primeira vez, na última hora:
+# o formato de uma conta de passagem. Empresa recebe de muita gente por
+# natureza, então o limiar do CNPJ é bem maior.
+E3_HOLDERS = 5
+E3_FIRST_TIME_HOLDERS = 3
+E3_HOLDERS_COMPANY = 30
+E3_FIRST_TIME_HOLDERS_COMPANY = 16
+
+# E5 — conta com menos de 7 dias recebendo volume alto de vários titulares:
+# mais de R$ 5.000 em 24 h, de 3 ou mais titulares.
+E5_ACCOUNT_AGE = timedelta(days=7)
+E5_AMOUNT = 5000 * 100
+E5_HOLDERS = 3
+
+# Repasse — o dinheiro sai logo depois de entrar, que é o que define uma conta
+# de passagem: a conta recebeu pelo menos R$ 1.000 aprovados na última hora, este
+# Pix leva o total enviado na hora a 50% ou mais disso, e o destino é pessoa
+# física ou CNPJ com conta de menos de 90 dias (o mesmo ESTABLISHED_CNPJ_AGE).
+REPASSE_WINDOW = timedelta(hours=1)
+REPASSE_MIN_RECEIVED = 1000 * 100
+REPASSE_SHARE_PERCENT = 50
+
 # Janelas das evidências locais (E2, E3 e E5). Quando a janela passa, a
 # evidência some e o estado cai sozinho: não existe marcação local permanente.
 E2_WINDOW = timedelta(days=30)

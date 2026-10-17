@@ -16,6 +16,7 @@ class PixRequest:
     transaction_date: datetime
     payer_branch: str
     payer_account_number: str
+    payer_key: str
     payer_document: str
     source_opening_date: datetime
     device_id: str
@@ -66,12 +67,35 @@ class LocalEvidence:
 
 
 @dataclass(frozen=True)
-class MuleHistory:
-    """O histórico de que o módulo de conta laranja precisa, lido do banco depois da trava.
+class AccountFlows:
+    """Os indicadores brutos do grafo para UMA conta, lidos do banco depois da trava.
 
-    Nenhum valor inclui o Pix atual. Só Pix `approved` contam como "recebido" ou
-    "enviado": "recebido" significa aprovado pelo motor, não liquidado.
+    Nenhum inclui o Pix atual, e só Pix `approved` contam: "recebido" significa
+    aprovado pelo motor, não liquidado. As regras transformam estes números nas
+    evidências; o repository só os conta.
     """
+
+    # O que a conta recebeu em 30 dias, e quanto disso veio de contas com E1 no momento do Pix.
+    received_30d: int = 0
+    received_30d_from_e1: int = 0
+    # A conta usou, em 30 dias, um aparelho também usado por uma conta com E1.
+    shares_device_with_e1: bool = False
+    # Titulares distintos com Pix aprovado com a conta, em qualquer direção e em todo o histórico.
+    counterparties: int = 0
+    # Titulares distintos que enviaram na última hora, e quantos nunca tinham enviado antes dela.
+    holders_1h: int = 0
+    first_time_holders_1h: int = 0
+    # O que a conta recebeu em 24 h, de quantos titulares.
+    received_24h: int = 0
+    holders_24h: int = 0
+    # Para o repasse: o que a conta recebeu e o que enviou na última hora.
+    received_1h: int = 0
+    sent_1h: int = 0
+
+
+@dataclass(frozen=True)
+class MuleHistory:
+    """O histórico de que o módulo de conta laranja precisa, lido do banco depois da trava."""
 
     # A `transaction_date` da primeira análise em que o motor viu o DESTINO
     # marcado (E1) ou com notificações abertas (E4). `None` se nunca viu: o
@@ -81,8 +105,8 @@ class MuleHistory:
     # A primeira aprovação deste pagador para este titular de destino. Dela saem
     # o "destinatário conhecido" e a "relação anterior".
     first_approval_to_destination: Optional[datetime] = None
-    payer_local: LocalEvidence = field(default_factory=LocalEvidence)
-    destination_local: LocalEvidence = field(default_factory=LocalEvidence)
+    payer_flows: AccountFlows = field(default_factory=AccountFlows)
+    destination_flows: AccountFlows = field(default_factory=AccountFlows)
 
 
 @dataclass(frozen=True)

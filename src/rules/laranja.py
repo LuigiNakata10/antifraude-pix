@@ -2,15 +2,27 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from rules.context import DictSignals, LocalEvidence, PixContext
+from rules.context import AccountFlows, DictSignals, LocalEvidence, PixContext
 from rules.decision import Decision, Status
 from rules.parameters import (
     E1_REPORTERS_THRESHOLD,
+    E2_REPUTATION_AGE,
+    E2_REPUTATION_COUNTERPARTIES,
+    E2_SHARE_PERCENT,
     E2_WINDOW,
+    E3_FIRST_TIME_HOLDERS,
+    E3_FIRST_TIME_HOLDERS_COMPANY,
+    E3_HOLDERS,
+    E3_HOLDERS_COMPANY,
     E3_WINDOW,
-    E5_WINDOW,
     E4_OPEN_REPORTS_THRESHOLD,
+    E5_ACCOUNT_AGE,
+    E5_AMOUNT,
+    E5_HOLDERS,
+    E5_WINDOW,
     ESTABLISHED_CNPJ_AGE,
+    REPASSE_MIN_RECEIVED,
+    REPASSE_SHARE_PERCENT,
     TYPICAL_SPEND_LIMIT,
 )
 from rules.reasons import ReasonCode
@@ -84,6 +96,33 @@ def dict_signals(status: str, response: Optional[dict]) -> DictSignals:
     return DictSignals(status=status, e1=e1, e4=e4)
 
 
+def local_evidence(flows: AccountFlows, opening_date: datetime, document_number: str, t: datetime) -> LocalEvidence:
+    """E2, E3 e E5 de uma conta, a partir dos indicadores do grafo.
+
+    E2: mais de 50% do que recebeu em 30 dias veio de conta com E1, ou usou o
+    aparelho de uma, mas só se a conta tem menos de 90 dias ou menos de 10
+    contrapartes (a trava de reputação).
+    E3: muitos titulares enviando na última hora, a maioria de primeira vez.
+    E5: conta com menos de 7 dias recebendo volume alto de vários titulares.
+    """
+    age = t - opening_date
+
+    low_reputation = age < E2_REPUTATION_AGE or flows.counterparties < E2_REPUTATION_COUNTERPARTIES
+    money_from_marked = (
+        flows.received_30d > 0 and flows.received_30d_from_e1 * 100 > flows.received_30d * E2_SHARE_PERCENT
+    )
+    e2 = low_reputation and (money_from_marked or flows.shares_device_with_e1)
+
+    is_company = len(document_number) == 14
+    holders_needed = E3_HOLDERS_COMPANY if is_company else E3_HOLDERS
+    first_time_needed = E3_FIRST_TIME_HOLDERS_COMPANY if is_company else E3_FIRST_TIME_HOLDERS
+    e3 = flows.holders_1h >= holders_needed and flows.first_time_holders_1h >= first_time_needed
+
+    e5 = age < E5_ACCOUNT_AGE and flows.received_24h > E5_AMOUNT and flows.holders_24h >= E5_HOLDERS
+
+    return LocalEvidence(e2=e2, e3=e3, e5=e5)
+
+
 def classify_account(
     dict_signals_: DictSignals,
     e1_since: Optional[datetime],
@@ -130,7 +169,9 @@ def classify_act(context: PixContext) -> str:
 
     Gasto típico é testado primeiro e prevalece: até R$ 1.000 para um titular
     que o pagador já conhecia (aprovação anterior) ou para um CNPJ com conta de
-    90 dias ou mais.
+    90 dias ou mais. Repasse: a conta recebeu pelo menos R$ 1.000 na última hora,
+    este Pix leva o enviado na hora a 50% ou mais disso, e o destino é pessoa
+    física ou CNPJ com conta de menos de 90 dias.
     """
     request = context.request
     known_recipient = context.mule.first_approval_to_destination is not None
@@ -140,6 +181,16 @@ def classify_act(context: PixContext) -> str:
     if request.amount <= TYPICAL_SPEND_LIMIT and (known_recipient or established_cnpj):
         return GASTO_TIPICO
 
+    flows = context.mule.payer_flows
+    forwarded = flows.sent_1h + request.amount
+    destination_is_person_or_young_company = len(request.destination_document) == 11 or (is_cnpj and not established_cnpj)
+    if (
+        flows.received_1h >= REPASSE_MIN_RECEIVED
+        and forwarded * 100 >= flows.received_1h * REPASSE_SHARE_PERCENT
+        and destination_is_person_or_young_company
+    ):
+        return REPASSE
+
     return OUTRO
 
 
@@ -148,9 +199,15 @@ def evaluate(context: PixContext) -> MuleResult:
     t = context.request.transaction_date
     mule = context.mule
 
-    payer = classify_account(context.payer_dict, None, None, mule.payer_local, t)
+    request = context.request
+    payer_local = local_evidence(mule.payer_flows, request.source_opening_date, request.payer_document, t)
+    destination_local = local_evidence(
+        mule.destination_flows, request.destination_opening_date, request.destination_document, t
+    )
+
+    payer = classify_account(context.payer_dict, None, None, payer_local, t)
     destination = classify_account(
-        context.destination_dict, mule.destination_e1_since, mule.destination_e4_since, mule.destination_local, t
+        context.destination_dict, mule.destination_e1_since, mule.destination_e4_since, destination_local, t
     )
 
     # Relação anterior: o pagador já tinha uma aprovação para este titular ANTES
@@ -191,6 +248,14 @@ def mule_decision(result: MuleResult) -> Optional[Decision]:
             Status.REJECTED,
             ReasonCode.MULE_PAYER,
             "A conta pagadora tem sinais confirmados de conta laranja; só gastos típicos são permitidos.",
+            reason_extra=_reason_extra("payer", result.payer, result.act),
+        )
+
+    if result.payer.state == SUSPEITA and result.act == REPASSE:
+        return Decision(
+            Status.REJECTED,
+            ReasonCode.SUSPECTED_MULE_FORWARDING,
+            "A conta pagadora tem sinais de conta de passagem e este Pix repassa o que ela acabou de receber.",
             reason_extra=_reason_extra("payer", result.payer, result.act),
         )
 
