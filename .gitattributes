@@ -1,0 +1,2 @@
+# Preservar os bytes dos PDFs, inclusive em checkouts no Windows.
+*.pdf binary
