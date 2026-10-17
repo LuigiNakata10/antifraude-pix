@@ -22,7 +22,7 @@ def hub_receiving_from_new_senders(
         sender = PixAccount()
         if index >= first_time:
             payer.fund(100 * REAL, before - 3 * HOUR, sender=sender)
-        payer.fund(each, before - (50 - 5 * index) * MINUTE, sender=sender)
+        payer.fund(each, before - timedelta(seconds=(senders - index) * 60), sender=sender)
         result.append(sender)
 
     return result

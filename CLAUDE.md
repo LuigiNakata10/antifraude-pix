@@ -6,9 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Desafio do Bootcamp QI Tech 2026: motor antifraude Pix. Toda a documentação e os commits do time são em português; mantenha isso.
 
-O código parte da `main` do Base Service (`bootcamp-base-api`, cópia sem histórico). **Tudo o que o desenho prevê está implementado e testado (204 testes):** POST e GET, trava por conta pagadora, idempotência (200/409), contexto histórico, a política R1–R4 (C01–C21) e o módulo de conta laranja (DICT simulado com cache, grafo de contas, E1–E5, ato e regras L1–L3, P01–P13), mais os scripts da demo. Não há `NotImplementedError` em `src/`.
+O código parte da `main` do Base Service (`bootcamp-base-api`, cópia sem histórico). **A integração v1.1 está descrita em `docs/integracao-motor-v1.1.md`:** POST e GET, trava por conta pagadora, idempotência (200/409), contexto histórico, a política R1–R4 (C01–C21) e o módulo de conta laranja (DICT simulado com cache, grafo de contas, E1–E5, ato e regras L1–L3, P01–P13), mais os scripts da demo. Não há `NotImplementedError` em `src/`.
 
 ## Comandos
+
+Sem Python no host: `docker compose --profile test run --build --rm tests`.
 
 ```bash
 docker compose up -d                  # API (3000), Postgres e mockserver (DICT simulado); espere o healthcheck (healthy)
@@ -39,17 +41,19 @@ Se 5432/5433 estiverem ocupadas no host, crie `.env` (fora do Git) com `DB_PORT=
 
 ### Módulo de conta laranja (decisões fechadas)
 
-- **L2** rejeita o pagador `confirmada` em todo ato que não seja gasto típico (repasse **e** "outro"). Ordem: R1, R2, L1, L2, L3, R4, R3. O módulo nunca pede 2FA.
+- **L2** rejeita o pagador `suspeita_elevada` em todo ato que não seja gasto típico (repasse **e** "outro"). Ordem: R1, R2, L1, L2, L3, R4, R3. O módulo nunca pede 2FA.
 - **DICT:** o destino é sempre ao vivo (cache de 1 h só como reserva, `dict_status: cache`); o pagador vem do cache de 24 h (`dict_lookup`, append-only, validade pelo relógio do servidor) e só é consultado no primeiro Pix. As duas consultas em paralelo, um prazo de 200 ms, **antes da trava**; a gravação no cache é uma transação curta própria. Indisponível = `None` (desconhecido), nunca evidência. A mesma chave `ispb:agência:conta` serve de cache para uma conta como destino e como pagador: um Pix que *entrou* na conta alimenta o cache do pagador (uma marcação nova só vale quando ele expira; os testes P04 e a demo usam o DICT fora do ar para o dinheiro entrar sem cache).
-- **Início da evidência** para a "relação anterior": E1 e E4 = `transaction_date` da primeira análise em que o motor viu a conta marcada (ou o Pix atual); E2, E3 e E5 = início da janela. Só relógio de negócio.
+- **Início da evidência:** somente data explícita de `EvidenceSince` no mock; ausente é desconhecido. E2+E4 não presume início nem exceção de relacionamento.
 - **"Recebido" e "enviado" são só Pix `approved`**; o Pix atual nunca entra no histórico. E1 de quem enviou fica em `pix_analysis.payer_dict_e1` (E2 soma o que entrou de quem tinha E1 naquele Pix).
-- **Arestas** (`pix`, `device`, `document`) gravadas em `account_link` para toda análise, no mesmo commit. Chave da conta pagadora: `INSTITUTION_ISPB:agência:conta` (`INSTITUTION_ISPB` fictício, padrão `99999999`).
-- **Gasto típico prevalece sobre repasse.** E3 para CNPJ: 30 titulares e 16 de primeira vez. Parâmetros e "porquê" em `src/rules/parameters.py`.
-- **Proposta vs. teste:** a proposta cita P12 com "4 titulares" e "E3 e E5", mas E3 exige 5; o teste usa 5.
+- **Arestas** (`pix`, `device`, `document`) gravadas em `account_link` só para aprovações, no mesmo commit. Chave da conta pagadora: `INSTITUTION_ISPB:agência:conta` (`INSTITUTION_ISPB` fictício, padrão `99999999`).
+- **Repasse aparente prevalece sobre gasto típico.** E3 para CNPJ: 30 titulares e 3 de primeira vez. Parâmetros e "porquê" em `src/rules/parameters.py`.
+- **Cenários:** P12 usa quatro titulares e E5; P14 usa cinco e E3+E5, sem elevar o estado. P14–P20 e regressões estão em `test_v11.py`.
 - O `reason` das regras L traz `account`, `account_state`, `evidences` e `act`; nunca documento nem identidade de conta marcada.
 - O Mockserver (5.15.0) carrega `mocks/dict_expectations.json` (padrão: nenhuma marcação, prioridade 0); os testes roteirizam com prioridade crescente por conta. **Não use o log do Mockserver nos testes** (`retrieve` e `clear` degradam com o volume): conta consultas pelas linhas de `dict_lookup`.
 
 ## Documentos e hierarquia entre eles
+
+A revisão atual é `docs/guia-de-desenvolvimento-v1.1.md` e `docs/modulo-contas-laranja-v1.1.md`. `docs/integracao-motor-v1.1.md` registra as convenções preservadas desta implementação e os testes. Documentos v1 abaixo são históricos; R1–R4 mantêm a política acordada.
 
 - `docs/regras-de-negocio-v1.md`: política **acordada** pelo time. Regras base R1–R4, definições (conta nova, acumulado de 24h, dispositivo conhecido, destinatário conhecido), ordem de decisão e cenários C01–C21. Ela manda sobre qualquer outro documento.
 - `docs/Proposta classificação possivel_laranja e regras por ato-v1.md`: módulo de conta laranja (**aprovado**): DICT simulado, grafo de contas, estado `possivel_laranja` (evidências E1–E5), regras L1–L3, cenários P01–P13.

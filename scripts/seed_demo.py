@@ -21,6 +21,7 @@ load_dotenv(ROOT / ".env")
 
 from tests.utils import DictMock, PixAccount, PixDestination, RandomGenerator  # noqa: E402
 from tests.utils.dict_mock import statistics  # noqa: E402
+from tests.utils.pix_account import at  # noqa: E402
 from tests.utils.mule_scenarios import hub_receiving_from_new_senders  # noqa: E402
 
 REAL = 100
@@ -67,7 +68,7 @@ def main() -> int:
     son = register(PixDestination(), "Filho (marcado no DICT)", "marked")
     mother = register(PixAccount(), "Mãe", "regular")
     mother.send(100 * REAL, -10 * DAY, "approved", destination=son)
-    DictMock.mark(son, mule=1)
+    DictMock.mark(son, mule=1, e1_since=at(-DAY))
     print("  O DICT passa a marcar a conta do filho. A mãe já mandava a mesada antes disso.")
     victim = register(PixAccount(), "Vítima nova", "victim")
     _, response = victim.pix(500 * REAL, destination=son)
@@ -93,10 +94,11 @@ def main() -> int:
     # ------------------------------------------------------------------ 3
     title("3. L2 divide o aparelho com L1 e recebe de vários titulares novos: também é barrada")
     l2 = register(PixAccount(age=12 * DAY, device_id="dvc-demo-aparelho-compartilhado"), "L2 (conta nova)", "suspect")
+    l2.send(100, -2 * HOUR, "approved", destination=company())
     for index, sender in enumerate(hub_receiving_from_new_senders(l2, senders=6, first_time=6, each=900 * REAL)):
         register(sender, f"Vítima nova {index + 1}", "victim")
-    _, response = l2.pix(4000 * REAL, destination=PixDestination())
-    show("3 ", "L2 tenta repassar R$ 4.000 (aparelho de L1 + 6 titulares novos na hora)", response, "rejected", "MULE_PAYER")
+    _, response = l2.pix(4000 * REAL, destination=register(PixDestination(), "Recebe o repasse de L2", "regular"))
+    show("3 ", "L2 tenta repassar R$ 4.000 (aparelho de L1 + 6 titulares novos na hora)", response, "rejected", "SUSPECTED_MULE_FORWARDING")
 
     # ------------------------------------------------------------------ 4
     title("4. Receber de boa-fé não trava ninguém: a padaria antiga continua pagando o fornecedor")
@@ -126,7 +128,7 @@ def main() -> int:
 
     out = ROOT / "output" / "demo"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "accounts.json").write_text(json.dumps(ACCOUNTS, ensure_ascii=False, indent=2))
+    (out / "accounts.json").write_text(json.dumps(ACCOUNTS, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n{sum(RESULTS)} de {len(RESULTS)} decisões como esperado. Papéis das contas em {out / 'accounts.json'}.")
     print("Para desenhar o grafo: python scripts/graph_demo.py")
 

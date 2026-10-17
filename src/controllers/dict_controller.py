@@ -49,6 +49,10 @@ class DictController(BaseController):
         destination_cached = self.repository.get_latest_since(
             destination.key, now - timedelta(seconds=DICT_DESTINATION_CACHE_TTL_SECONDS)
         )
+        # Materializa os JSONs antes do rollback, sem objetos ORM expirados durante HTTP.
+        payer_cached = DictObservation("cache", payer_cached.response) if payer_cached is not None else None
+        destination_cached = DictObservation("cache", destination_cached.response) if destination_cached is not None else None
+        self.session.rollback()
 
         queries = {"destination": destination}
         if payer_cached is None:

@@ -69,7 +69,7 @@ class TestDictSignals:
         assert row["payer_dict_e1"] is True
         assert row["payer_dict_e4"] is True
         assert row["analysis_details"]["dict_status"] == {"payer": "consultado", "destination": "consultado"}
-        assert row["analysis_details"]["payer"]["state"] == "confirmada"
+        assert row["analysis_details"]["payer"]["state"] == "suspeita_elevada"
         assert row["analysis_details"]["payer"]["evidences"] == ["E1", "E4"]
 
 

@@ -18,6 +18,8 @@ __pycache__
 .mypy_cache
 .ruff_cache
 .coverage
+tmp/
+output/
 htmlcov
 
 # Segredo NUNCA entra na imagem. As variaveis chegam por ambiente,

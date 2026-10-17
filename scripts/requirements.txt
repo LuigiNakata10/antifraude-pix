@@ -2,5 +2,5 @@
 # do requirements-dev.txt e da imagem da API: a API nao desenha grafo.
 -r ../requirements-dev.txt
 
-networkx==3.7
+networkx==3.4.2
 matplotlib==3.11.2

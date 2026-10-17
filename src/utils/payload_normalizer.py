@@ -2,6 +2,22 @@ import copy
 import re
 from datetime import datetime, timezone
 
+from errors import InvalidSchema
+
+
+def validate_text(value) -> None:
+    """Recusa texto que o PostgreSQL não pode guardar, antes de qualquer consulta."""
+    if isinstance(value, str):
+        if "\x00" in value or any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+            raise InvalidSchema("Texto contém caractere nulo ou Unicode inválido.")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            validate_text(key)
+            validate_text(item)
+    elif isinstance(value, list):
+        for item in value:
+            validate_text(item)
+
 
 DATE_PATHS = (
     ("transaction_date",),

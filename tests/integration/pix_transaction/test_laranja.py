@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from tests.utils import DbUtils, DictMock, PixAccount, PixDestination, RandomGenerator, RequestGenerator
 from tests.utils.assertions import assert_decision
+from tests.utils.pix_account import at
 from tests.utils.mule_scenarios import hub_receiving_from_new_senders
 
 REAL = 100  # R$ 1,00 em centavos
@@ -22,7 +23,7 @@ class TestMuleAccountRules:
         """A mãe que já mandava a mesada antes de o filho ser marcado: relação anterior, nada muda."""
         mother, son = PixAccount(), PixDestination()
         mother.send(100 * REAL, -10 * DAY, "approved", destination=son)
-        DictMock.mark(son, mule=1)
+        DictMock.mark(son, mule=1, e1_since=at(-DAY))
 
         _, response = mother.pix(100 * REAL, destination=son)
 
@@ -36,7 +37,7 @@ class TestMuleAccountRules:
 
         reason = assert_decision(response, "rejected", "MULE_DESTINATION")
         assert reason["account"] == "destination"
-        assert reason["account_state"] == "confirmada"
+        assert reason["account_state"] == "suspeita_elevada"
         assert reason["evidences"] == ["E1"]
         assert reason["act"] == "outro"
         assert "document" not in str(reason).lower()
@@ -67,9 +68,9 @@ class TestMuleAccountRules:
 
         reason = assert_decision(response, "rejected", "MULE_PAYER")
         assert reason["account"] == "payer"
-        assert reason["account_state"] == "confirmada"
+        assert reason["account_state"] == "suspeita_elevada"
         assert reason["evidences"] == ["E1"]
-        assert reason["act"] == "repasse"
+        assert reason["act"] == "repasse_aparente"
 
     def test_p05_a_marked_account_paying_a_new_person_is_rejected(self):
         """Mesmo sem entradas recentes: confirmada só faz gasto típico."""
@@ -108,8 +109,8 @@ class TestMuleAccountRules:
         assert reason["account"] == "payer"
         assert reason["account_state"] == "suspeita"
         assert reason["evidences"] == ["E3"]
-        assert reason["act"] == "repasse"
-        assert DbUtils.analysis_row(transaction_id)["analysis_details"]["act"] == "repasse"
+        assert reason["act"] == "repasse_aparente"
+        assert DbUtils.analysis_row(transaction_id)["analysis_details"]["act"] == "repasse_aparente"
 
     def test_p07_the_same_account_paying_a_small_bill_is_approved(self):
         """Suspeita só pesa no repasse: o mercado de R$ 90 passa."""
@@ -163,17 +164,17 @@ class TestMuleAccountRules:
         assert_decision(response, "approved", "POLICY_PASSED")
         assert DbUtils.analysis_row(transaction_id)["analysis_details"]["payer"]["state"] == "nao"
 
-    def test_p12_a_confirmed_young_account_can_still_pay_a_phone_bill(self):
-        """Conta de 3 dias com E3 + E5 é `confirmada`, mas gasto típico passa."""
+    def test_p12_a_young_account_with_E5_can_still_pay_a_phone_bill(self):
+        """Conta de 3 dias com quatro titulares: E5 sozinha, gasto típico passa."""
         young = PixAccount(age=3 * DAY)
-        hub_receiving_from_new_senders(young, senders=5, first_time=5, each=1300 * REAL)
+        hub_receiving_from_new_senders(young, senders=4, first_time=4, each=1500 * REAL)
         phone_company = PixDestination(age=400 * DAY, document=RandomGenerator.generate_cnpj())
 
         response, transaction_id = young.record(60 * REAL, destination=phone_company)
 
         assert_decision(response, "approved", "POLICY_PASSED")
         details = DbUtils.analysis_row(transaction_id)["analysis_details"]
-        assert details["payer"] == {"state": "confirmada", "evidences": ["E3", "E5"]}
+        assert details["payer"] == {"state": "suspeita", "evidences": ["E5"]}
 
     def test_p13_the_same_young_account_forwarding_is_stopped_first_by_the_new_account_limit(self):
         """A ordem: R1 já pega a conta nova acima de R$ 1.000, e é o motivo informado."""

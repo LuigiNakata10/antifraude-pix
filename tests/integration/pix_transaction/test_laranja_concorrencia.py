@@ -27,7 +27,7 @@ class TestMuleAccountConcurrency:
             if body["status"] == "rejected":
                 assert body["metadata"]["reason"]["code"] == "SUSPECTED_MULE_FORWARDING"
         acts = sorted(DbUtils.analysis_row(payload["id"])["analysis_details"]["act"] for payload in payloads)
-        assert acts == ["outro", "outro", "repasse", "repasse"]
+        assert acts == ["outro", "outro", "repasse_aparente", "repasse_aparente"]
 
     def test_simultaneous_payments_to_a_marked_account_are_all_rejected_and_recorded_once(self):
         """Vítimas diferentes pagando a mesma conta marcada ao mesmo tempo: todas barradas, cada uma gravada uma vez."""

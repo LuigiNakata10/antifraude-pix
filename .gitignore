@@ -79,3 +79,4 @@ coverage.xml
 
 # --- Saidas geradas pela demo (scripts/seed_demo.py e graph_demo.py) ----
 output/demo/
+tmp/

@@ -93,3 +93,20 @@ services:
       - ./mocks:/config:ro
     ports:
       - "${MOCKSERVER_PORT:-1080}:1080"
+
+  tests:
+    profiles: [test]
+    build:
+      context: .
+      target: tests
+    environment:
+      APP_ENV: test
+      SERVER_LOCALHOST: api
+      API_PORT: 3000
+      MOCKSERVER_URL: http://mockserver:1080
+      DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
+      INSTITUTION_ISPB: ${INSTITUTION_ISPB:-99999999}
+    depends_on:
+      api:
+        condition: service_healthy

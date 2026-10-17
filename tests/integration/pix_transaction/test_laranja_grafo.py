@@ -118,6 +118,7 @@ class TestGraphEvidence:
         marked_account_pays(old_company(), 100 * REAL, -3 * HOUR, device_id=shared)
         account = PixAccount(device_id=shared)
 
+        account.send(100 * REAL, -2 * HOUR, "approved")
         assert state_of(account) == {"state": "suspeita", "evidences": ["E2"]}
 
     def test_a_device_shared_with_an_account_that_is_not_marked_is_not_a_sign(self):

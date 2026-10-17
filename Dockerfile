@@ -24,3 +24,14 @@ USER user
 # informacao de menos pra quem procura uma versao com falha conhecida.
 CMD uvicorn app:app --host 0.0.0.0 --port 3000 --no-server-header
 
+FROM base AS tests
+ENV PYTHONPATH=/app
+COPY requirements-dev.txt /requirements-dev.txt
+COPY scripts/requirements.txt /scripts-requirements.txt
+RUN pip install -r /requirements-dev.txt -r /scripts-requirements.txt
+COPY tests /app/tests
+COPY scripts /app/scripts
+COPY database /app/database
+COPY .flake8 /app/.flake8
+CMD ["pytest", "-q"]
+

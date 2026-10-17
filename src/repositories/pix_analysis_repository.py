@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from sqlalchemy import func
 
+from constants import INSTITUTION_ISPB
 from database import Context
 from models import PayerAccount, PixAnalysis
 from rules import AccountHistory, Decision, DictSignals, MuleHistory, PixContext, PixRequest
@@ -25,6 +26,18 @@ class PixAnalysisRepository:
 
     def get_by_transaction_id(self, transaction_id: str) -> PixAnalysis:
         return self.session.query(PixAnalysis).filter(PixAnalysis.transaction_id == transaction_id).first()
+
+    def get_account_identity(self, key: str):
+        known = self.session.query(PixAnalysis.destination_document, PixAnalysis.destination_opening_date).filter(
+            PixAnalysis.destination_key == key).first()
+        if known is not None:
+            return known
+        participant, branch, number = key.split(":")
+        if participant == INSTITUTION_ISPB:
+            return self.session.query(PixAnalysis.payer_document, PixAnalysis.source_opening_date).join(
+                PayerAccount, PayerAccount.id == PixAnalysis.payer_account_id).filter(
+                    PayerAccount.branch == branch, PayerAccount.account_number == number).first()
+        return None
 
     def get_latest_transaction_date(self, payer_account: PayerAccount) -> Optional[datetime]:
         """A maior `transaction_date` já analisada para a conta, com qualquer status."""
@@ -99,17 +112,6 @@ class PixAnalysisRepository:
         """O histórico do módulo de conta laranja, com a mesma convenção de janela e sem o Pix atual."""
         t = request.transaction_date
 
-        def first_marked(column) -> Optional[datetime]:
-            return (
-                self.session.query(func.min(PixAnalysis.transaction_date))
-                .filter(
-                    PixAnalysis.destination_key == request.destination_key,
-                    column.is_(True),
-                    PixAnalysis.transaction_date <= t,
-                )
-                .scalar()
-            )
-
         first_approval = (
             self.session.query(func.min(PixAnalysis.transaction_date))
             .filter(
@@ -122,8 +124,6 @@ class PixAnalysisRepository:
         )
 
         return MuleHistory(
-            destination_e1_since=first_marked(PixAnalysis.destination_dict_e1),
-            destination_e4_since=first_marked(PixAnalysis.destination_dict_e4),
             first_approval_to_destination=first_approval,
             payer_flows=self.links.flows(request.payer_key, t, request.device_id),
             destination_flows=self.links.flows(request.destination_key, t, None),

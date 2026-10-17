@@ -4,7 +4,7 @@
 
 Hackathon QI Tech 2026. Uma API que recebe um pedido de Pix e responde `approved`, `two_factor_required` ou `rejected`, sempre com **um motivo explicado**. Construída a partir do Base Service, com banco próprio que guarda tudo o que chegou.
 
-**Estado desta versão:** tudo o que o desenho prevê está implementado e testado (204 testes): as regras base R1 a R4, a idempotência, a trava por conta e o **módulo de conta laranja** (DICT simulado, grafo de contas e as regras L1 a L3). Há uma [demo pronta](#demo-da-apresentação).
+**Estado desta versão:** política revisada e integrada a partir de `feat/motor-antifraude` (resultados na [nota de integração](docs/integracao-motor-v1.1.md)): as regras base R1 a R4, a idempotência, a trava por conta e o **módulo de conta laranja** (DICT simulado, grafo de contas e as regras L1 a L3). Há uma [demo pronta](#demo-da-apresentação).
 
 ## Como o motor de decisão funciona
 
@@ -24,7 +24,7 @@ Princípios: poucas regras, sem pontuação nem probabilidade de fraude; **um ú
 4. **trava a conta pagadora** (`SELECT ... FOR NO KEY UPDATE`) e procura o `id` de novo, porque um reenvio pode ter concluído enquanto este pedido esperava;
 5. recusa o pedido retroativo e lê o histórico da conta e do grafo, **só depois da trava**;
 6. a política pura decide (`src/rules/policy.py`: sem banco, sem relógio, sem I/O);
-7. grava a análise **e as arestas do grafo** e dá `commit`. Qualquer falha antes disso desfaz tudo.
+7. grava a análise **e, se aprovada, as arestas do grafo** e dá `commit`. Qualquer falha antes disso desfaz tudo.
 
 A trava por conta é o que impede dois Pix simultâneos de atravessar juntos o teto. Sem ela, os dois leriam acumulado zero e aprovariam R$ 12.000. Contas diferentes não esperam umas pelas outras. Nenhum contador fica em memória: o banco é a única fonte de estado, então qualquer réplica da API atende qualquer pedido.
 
@@ -69,7 +69,7 @@ Exemplo de `metadata` (R4, real, gerado pela API):
 
 ```json
 {
-  "policy_version": "pix-v1",
+  "policy_version": "pix-v1.1",
   "reason": {
     "code": "NEW_DEVICE_HIGH_AMOUNT",
     "description": "Confirmação adicional: valor elevado em um aparelho ainda não conhecido para esta conta.",
@@ -81,28 +81,28 @@ Exemplo de `metadata` (R4, real, gerado pela API):
 
 ## Módulo de conta laranja
 
-**A tese.** Contra conta tomada, o 2FA funciona: o invasor não tem o segundo fator. Contra **conta laranja**, não: quem confirma é o próprio operador da conta, seja o recrutado, seja quem comprou o acesso. A única saída é reconhecer a conta e recusar o ato certo. Por isso o motor **primeiro classifica a conta** (estado `nao`, `suspeita` ou `confirmada`) **e depois decide o ato**: a laranja paga a conta de luz, mas não repassa o dinheiro do golpe.
+**A tese.** Contra conta tomada, o 2FA pode ajudar se o invasor não tiver o segundo fator. Contra **conta laranja**, não: quem confirma é o próprio operador da conta, seja o recrutado, seja quem comprou o acesso. A única saída é reconhecer a conta e recusar o ato certo. Por isso o motor **primeiro classifica a conta** (estado `nao`, `suspeita` ou `suspeita_elevada`) **e depois decide o ato**: a laranja paga a conta de luz, mas não repassa o dinheiro do golpe.
 
 **Premissa: nem toda transação que envolve uma laranja é fraudulenta.** O recrutado paga as próprias contas, a vítima que paga a laranja não é cúmplice, e a mãe que manda mesada ao filho recrutado também não. Bloquear tudo que toca a conta trava inocentes e não recupera dinheiro.
 
-Duas fontes se completam: o **DICT** dá sementes confirmadas por outras instituições (o motor deixa de depender só do que viu), e o **grafo local** segue o dinheiro e o aparelho a partir delas e enxerga padrões antes de haver marcação.
+Duas fontes se completam: o **DICT** dá marcações e relatos de outras instituições (o motor deixa de depender só do que viu), e o **grafo local** segue o dinheiro e o aparelho a partir delas e enxerga padrões antes de haver marcação.
 
 ### Estado da conta: cinco evidências
 
-Calculado na hora, para o pagador e para o destino. Não há marcação local permanente: quando a janela de uma evidência passa, ela some e o estado cai sozinho. Só o DICT mantém uma conta `confirmada` por muito tempo.
+Calculado na hora, para o pagador e para o destino. Não há marcação local permanente: quando a janela de uma evidência passa, ela some e o estado cai sozinho. Só o DICT mantém uma conta `suspeita_elevada` por muito tempo.
 
 | Evidência | Lógica | Parâmetros | Por quê |
 |---|---|---|---|
-| **E1** marcação no DICT | conta laranja ou golpista marcada, ou titular marcado por 2 ou mais instituições | janela `d90` do DICT; 2 instituições | É a semente mais forte: outra instituição já confirmou. Duas instituições independentes substituem uma marcação formal |
+| **E1** marcação no DICT | conta laranja ou golpista marcada, ou titular marcado por 2 ou mais instituições | janela `d90` do DICT; 2 instituições | Marcação ou concordância entre relatos merece atenção, sem comprovar fraude. Duas instituições podem refletir o mesmo fato |
 | **E2** dinheiro ou aparelho de conta E1 | mais de 50% do que a conta recebeu em 30 dias veio de contas com E1, ou ela usou o aparelho de uma. **Só E1 propaga**, um salto | 30 dias; mais de 50%; só se a conta tem menos de 90 dias **ou** menos de 10 contrapartes | Segue o dinheiro a partir das sementes. As travas protegem quem recebeu de boa-fé (veja abaixo) |
-| **E3** muitos titulares enviando | titulares distintos que enviaram na última hora, a maioria pela primeira vez | 5 ou mais, sendo 3 de primeira vez; para CNPJ, 30 e 16 | É o formato de uma conta de passagem. Empresa recebe de muita gente por natureza |
+| **E3** muitos titulares enviando | titulares distintos que enviaram na última hora, pelo menos três estreantes | 5 ou mais, sendo 3 de primeira vez; para CNPJ, 30 e 3 | É o formato de uma conta de passagem. Empresa recebe de muita gente por natureza |
 | **E4** notificações de infração | notificações abertas contra a conta, no DICT | 2 ou mais | Uma pode ser disputa; duas já são um padrão |
 | **E5** conta nova com volume | conta com menos de 7 dias recebendo muito de vários titulares | mais de R$ 5.000 em 24 h, de 3 ou mais titulares | Conta recém-aberta com volume alto de desconhecidos é o perfil de conta aberta para o golpe |
 
 | Estado | Quando |
 |---|---|
-| `confirmada` | E1, ou 2 ou mais evidências entre E2 e E5 |
-| `suspeita` | exatamente 1 evidência entre E2 e E5 |
+| `suspeita_elevada` | E1 ou a combinação explícita E2+E4 |
+| `suspeita` | outras combinações com evidência positiva, inclusive E3+E5 |
 | `nao` | nenhuma evidência |
 
 "Recebido" e "enviado" contam só Pix **`approved`**: aprovado pelo motor, não liquidado. **DICT indisponível:** E1 e E4 ficam desconhecidas e o estado sai só das evidências locais; desconhecido nunca conta como evidência.
@@ -121,11 +121,11 @@ Calculado na hora, para o pagador e para o destino. Não há marcação local pe
 
 | Ato | Lógica | Parâmetros | Por quê |
 |---|---|---|---|
-| **Gasto típico** (testado primeiro, prevalece) | até o teto, para um titular que o pagador já conhecia (aprovação anterior) ou para CNPJ com conta de 90 dias ou mais | R$ 1.000; 90 dias | O padrão de quem usa a conta para a própria vida. O teto e a exigência de CNPJ antigo impedem o repasse de se disfarçar de "gasto" numa empresa de fachada |
-| **Repasse** | a conta recebeu pelo menos o mínimo na última hora, este Pix leva o enviado na hora à proporção ou mais, e o destino é pessoa física ou CNPJ com conta de menos de 90 dias | recebido de R$ 1.000 ou mais; 50% ou mais; 1 hora | O dinheiro sai logo depois de entrar, que é o que define uma conta de passagem |
+| **Gasto típico** (somente se não houver repasse) | até o teto, para um titular que o pagador já conhecia (aprovação anterior) ou para CNPJ com conta de 90 dias ou mais | R$ 1.000; 90 dias | O padrão de quem usa a conta para a própria vida. O teto e a exigência de CNPJ antigo impedem o repasse de se disfarçar de "gasto" numa empresa de fachada |
+| **Repasse aparente** (testado primeiro) | a conta recebeu pelo menos o mínimo na última hora, este Pix leva o enviado na hora à proporção ou mais, e o destino é pessoa física ou CNPJ com conta de menos de 90 dias | recebido de R$ 1.000 ou mais; 50% ou mais; 1 hora | O dinheiro sai logo depois de entrar, que é o que define uma conta de passagem |
 | **Outro** | o resto | — | Fica com as regras base |
 
-**Relação anterior:** o pagador já tinha uma aprovação para o mesmo titular de destino **antes** da evidência mais antiga do destino. Para E1 e E4, essa data é a primeira vez que o *motor* viu a marca (ou o próprio Pix, se é a primeira); para E2, E3 e E5, o início da janela. É a mãe que já mandava a mesada antes de o filho virar laranja; uma relação criada depois da suspeita não vale.
+**Relação anterior:** exige uma aprovação para o mesmo titular antes do início explícito da evidência que sustenta a suspeita elevada. A extensão fictícia `EvidenceSince` do mock pode informar E1/E4; sem início, não presumimos relação anterior. E2+E4 tem início histórico desconhecido. A primeira consulta e o começo da janela não substituem esse dado.
 
 ### As regras L1 a L3
 
@@ -133,15 +133,15 @@ Todas rejeitam e só aparecem depois de R1 e R2 (a conta nova acima do teto é b
 
 | Regra | Lógica | Parâmetros | Por quê |
 |---|---|---|---|
-| **L1** destino laranja | destino `confirmada` e **primeira relação** do pagador com ele → `rejected` | estado `confirmada`; relação anterior | Protege a vítima nova sem travar quem já se relacionava com a conta |
-| **L2** pagador laranja | pagador `confirmada` e ato que **não é gasto típico** (repasse ou outro) → `rejected` | estado `confirmada`; ato diferente de gasto típico | Prende o dinheiro do golpe, mas deixa a pessoa pagar as próprias contas |
+| **L1** destino laranja | destino `suspeita_elevada` e **primeira relação** do pagador com ele → `rejected` | estado `suspeita_elevada`; relação anterior | Protege a vítima nova sem travar quem já se relacionava com a conta |
+| **L2** pagador laranja | pagador `suspeita_elevada` e ato que **não é gasto típico** (repasse ou outro) → `rejected` | estado `suspeita_elevada`; ato diferente de gasto típico | Prende o dinheiro do golpe, mas deixa a pessoa pagar as próprias contas |
 | **L3** repasse suspeito | pagador `suspeita` e ato de **repasse** → `rejected` | estado `suspeita`; repasse | A evidência do estado mais o repasse formam a combinação de dois sinais exigida para rejeitar |
 
 | Pagador \ ato | Gasto típico | Repasse | Outro |
 |---|---|---|---|
 | `nao` | regras base | regras base | regras base |
 | `suspeita` | regras base | **L3** | regras base |
-| `confirmada` | regras base | **L2** | **L2** |
+| `suspeita_elevada` | regras base | **L2** | **L2** |
 
 Destino em `suspeita` não muda a decisão: uma evidência isolada não intervém. A matriz é pagadora × ato; L1 é destino × relação anterior.
 
@@ -164,7 +164,7 @@ Rotas exigem o cabeçalho `INTERNAL-TOKEN` (sem ele: 403). `/` e `/health_check`
 
 - `POST /pix/transaction`: analisa e grava. O corpo é o do desafio (`id`, `amount` em centavos, `transaction_date` com fuso, `source_account`, `destination_account`, `source`); `geolocation` é opcional e todo campo a mais é recusado.
 - `GET /pix/transaction/{id}`: devolve a análise **gravada**, sem rodar as regras de novo. O `{id}` é o `id` do cliente.
-- Resposta: `{"key": "<uuid>", "status": "...", "metadata": {"policy_version": "pix-v1", "reason": {...}}}`. O id interno do banco nunca sai. O que o motor viu do DICT e o estado das contas ficam só em `analysis_details`, para auditoria, e não voltam na resposta.
+- Resposta: `{"key": "<uuid>", "status": "...", "metadata": {"policy_version": "pix-v1.1", "reason": {...}}}`. O id interno do banco nunca sai. O que o motor viu do DICT e o estado das contas ficam só em `analysis_details`, para auditoria, e não voltam na resposta.
 
 | Situação | Resposta | Código |
 |---|---|---|
@@ -182,18 +182,41 @@ Rotas exigem o cabeçalho `INTERNAL-TOKEN` (sem ele: 403). `/` e `/health_check`
 
 **Idempotência.** O `id` vem do cliente e pode repetir. A comparação é entre estruturas **normalizadas**, não entre textos JSON: ordem das chaves é ignorada, as três datas são comparadas como instantes (UTC) e os documentos só pelos dígitos. Todo o resto é exato (canal, IP, geolocalização, zeros à esquerda, valor). Um reenvio não conta como nova tentativa em R3 nem entra no acumulado. `UNIQUE(transaction_id)` é a garantia final: dois pedidos com o mesmo `id` em paralelo gravam uma análise só.
 
+## Convenções da integração v1.1
+
+As contas e o ato são classificados antes da aplicação de L1–L3. E3+E5 não eleva a suspeita, pois pode representar a mesma arrecadação legítima. E2+E4 também não prova independência entre fontes. O aparelho só liga contas depois de usos aprovados das duas em 30 dias. Reputação conta contas distintas nessa mesma janela; E3/E5 contam titulares.
+
+O corte de 30 titulares para CNPJ dá tolerância maior a recebimentos comerciais, preservando três estreantes como requisito mínimo. O mínimo de R$ 1.000 e a saída de 50% em 1h procuram concentração relevante, mas podem atingir repasses legítimos. Noventa dias e dez contrapartes aproximam maturidade sem cadastro; continuam hipóteses de protótipo, sem eficácia comprovada. E1 não significa confirmação de fraude.
+
+O motivo público mantém `evidences` e acrescenta `evidence_values`, com números e limiares, sem documentos de terceiros. Textos não persistíveis retornam 400; titular ou abertura divergente do histórico retorna 422 `QIT003007`.
+
+Preservamos o cache por conta (24h pagador; destino ao vivo com reserva de 1h) e E2 com E1 observado nas aprovações históricas. Esses desvios da proposta de snapshots atuais por titular estão explicados na [nota de integração](docs/integracao-motor-v1.1.md).
+
 ## Modelo de dados
 
 Sem cadastro de clientes, saldo nem ledger (esquema em [`database/database.sql`](database/database.sql)):
 
 - `payer_account`: a conta pagadora (agência e conta), âncora da trava. Nasce na primeira análise.
 - `pix_analysis`: **uma linha por Pix**, com o pedido e a análise juntos, gravada uma vez já com a decisão. Tem colunas só para o que as regras consultam (valor, datas, aparelho, documentos, destino, o que o DICT disse de cada conta) e preserva o corpo completo em `request_payload` e o retrato da decisão em `analysis_details` (JSONB). Índices nas janelas da conta e o parcial `WHERE status = 'approved'` da primeira aprovação do aparelho.
-- `account_link`: as arestas do grafo, uma linha por evento.
+- `account_link`: as arestas do grafo, uma linha por evento aprovado; rejeições e 2FA continuam na análise.
 - `dict_lookup`: o cache do DICT, uma linha por consulta que respondeu.
 
 **Histórico append-only em todas as tabelas de histórico:** nada que entrou é atualizado ou apagado (o que seria um agregado, como "primeira vez" ou "total recebido", sai de `MIN` e `SUM` por consulta). Rejeições e pedidos de 2FA também ficam gravados, e o `GET` devolve o resultado original mesmo que a política mude depois. Dinheiro é `BIGINT` em centavos.
 
 ## Como rodar e testar
+
+Também é possível executar tudo em containers, sem Python no host:
+
+```bash
+docker compose up --build -d --wait
+docker compose --profile test run --build --rm tests
+docker compose --profile test run --rm --no-deps tests python -m flake8 src tests scripts
+docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/seed_demo.py
+docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/graph_demo.py
+```
+
+O perfil de testes contém as dependências dos scripts; a imagem da API continua sem elas.
+
 
 Precisa de **Docker** (com `docker compose`) e **Python 3.11+** só para rodar os testes.
 
@@ -243,7 +266,7 @@ O token padrão é `default_token` (a variável `INTERNAL_TOKEN` o troca). Em pr
 - **Porta ocupada** ("port is already allocated"): copie `.env.example` para `.env`, descomente e troque `API_PORT` ou `DB_PORT` e, se mudar a do banco, a mesma porta na `DATABASE_URL`.
 - Um teste só: `pytest tests/integration/pix_transaction/test_policy.py::TestNewDeviceHighAmount`.
 
-**O que os testes cobrem** (`tests/integration/pix_transaction/`, 204 no total):
+**O que os testes cobrem** (`tests/integration/pix_transaction/`, incluindo a integração v1.1):
 
 | Arquivo | Cobre |
 |---|---|
@@ -278,15 +301,18 @@ Cada rodada usa contas novas, então pode repetir. O `seed_demo.py` sai com erro
 - **2FA sem retorno.** O contrato não traz a conclusão do 2FA e o motor não simula a confirmação, então um aparelho pode continuar pedindo 2FA em Pix altos até uma aprovação comum completar as 24 h.
 - **Risco residual assumido:** uma única solicitação fraudulenta abaixo dos tetos, no aparelho conhecido e com autenticação válida, é aprovada; um pagamento sob ameaça também. Uma rajada espaçada além de 2 minutos não dispara R3. Uma aprovação pequena pode tornar o aparelho conhecido para um Pix alto depois de 24 h. As regras não comprovam fraude: aprovar significa só que nenhuma intervenção foi exigida.
 - **O cache de 24 h do pagador atrasa uma marcação nova.** Uma conta marcada no DICT depois de ter sido consultada só é vista como pagadora quando o cache expira. É o preço de não consultar o DICT a cada Pix de um cliente do banco; o destino, ao contrário, é sempre ao vivo.
-- **A "relação anterior" usa o relógio de quem vê.** A data de início de E1 e E4 é a primeira vez que *este motor* viu a marca (o DICT só devolve contadores). Uma relação criada depois dessa data não vale, o que fecha a fabricação de "relação" logo antes do golpe, mas só enxerga o que passa pelo motor.
+- **Relação anterior exige início explícito.** A extensão fictícia `EvidenceSince` do mock pode informar datas E1/E4. Campo ausente é desconhecido; primeira observação ou início da janela não substituem a data. Sem início reconstruível, inclusive em E2+E4, não se presume exceção de relacionamento.
 - **O módulo só vê os Pix que passam por ele.** Uma laranja que só aparece em outros bancos, sem marcação no DICT, não é vista; a QI, como participante direto do Pix, veria mais. "Recebido" significa aprovado pelo motor, não liquidado.
-- **A laranja pode disfarçar o repasse em vários gastos típicos** de até R$ 1.000 para destinos conhecidos. R2 e R3 continuam valendo e limitam o volume.
+- **Risco residual de gastos típicos.** Repasse aparente é avaliado primeiro; ainda assim, entradas não observadas e CNPJ antigo podem permitir operações fraudulentas. R2 e R3 continuam valendo.
 - **Fora desta versão** (próximos passos): renda declarada e situação cadastral como novas evidências, e separar o dinheiro suspeito da conta (recusar só a parte da saída que excede o que entrou de fontes limpas, na lógica do MED 2.0).
 - **Os parâmetros do módulo também são do protótipo** (R$ 1.000, 50%, 5 titulares, 90 dias...) e precisariam de dados reais para calibrar.
 - **Escolhas retiradas:** pontuação e IA (a explicação tem de ser nomeada e reproduzível), limite por média do cliente, ajuste por saldo (não é fornecido), limites progressivos após 7 dias, limite somado por CPF/CNPJ, regra por deslocamento geográfico. Detalhes e justificativas em [`docs/regras-de-negocio-v1.md`](docs/regras-de-negocio-v1.md).
 - **Divergências do desenho original:** a trava é `FOR NO KEY UPDATE`, e não `FOR UPDATE`, porque o `INSERT` de `pix_analysis` pega `FOR KEY SHARE` na mesma linha e daria deadlock; entrada incoerente é 422, e não 400; `SQLAlchemy` está em 2.0.51 (a 2.0.23 do projeto base não importa em Python 3.14).
 
 ## Documentação
+
+A política atual está no [guia v1.1](docs/guia-de-desenvolvimento-v1.1.md), no [módulo v1.1](docs/modulo-contas-laranja-v1.1.md) e nas convenções da [integração](docs/integracao-motor-v1.1.md). Os documentos v1 abaixo são preservados como histórico.
+
 
 | Documento | O que contém |
 |---|---|

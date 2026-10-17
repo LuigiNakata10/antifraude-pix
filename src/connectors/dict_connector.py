@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -102,7 +103,17 @@ def _has_expected_shape(body) -> bool:
             if not isinstance(node, dict) or name not in node:
                 return False
             node = node[name]
-        if isinstance(node, bool) or not isinstance(node, int):
+        if isinstance(node, bool) or not isinstance(node, int) or node < 0:
             return False
+
+    since = body.get("EvidenceSince", {})
+    if not isinstance(since, dict):
+        return False
+    try:
+        for name in ("E1", "E4"):
+            if since.get(name) is not None and datetime.fromisoformat(since[name].replace("Z", "+00:00")).tzinfo is None:
+                return False
+    except (ValueError, AttributeError, TypeError):
+        return False
 
     return True

@@ -27,6 +27,7 @@ from sqlalchemy import create_engine, text  # noqa: E402
 load_dotenv(ROOT / ".env")
 
 from tests.utils import DbUtils  # noqa: E402
+from tests.utils.pix_account import INSTITUTION_ISPB  # noqa: E402
 
 NODE_SIZE = 900
 OUTPUT = ROOT / "output" / "demo" / "grafo-demo.png"
@@ -48,13 +49,15 @@ ROLE_NAMES = {
 # Cada Pix grava uma aresta `pix`; a decisão dele vem da análise. Só as arestas
 # entre as contas da demo entram no desenho.
 PIX_EDGES = """
-    SELECT l.from_key, l.to_key, l.amount, a.status
-    FROM account_link l JOIN pix_analysis a ON a.id = l.pix_analysis_id
-    WHERE l.link_type = 'pix' AND (l.from_key = ANY(:keys) AND l.to_key = ANY(:keys))
+    SELECT (:ispb || ':' || p.branch || ':' || p.account_number) AS from_key,
+           a.destination_key AS to_key, a.amount, a.status
+    FROM pix_analysis a JOIN payer_account p ON p.id = a.payer_account_id
+    WHERE (:ispb || ':' || p.branch || ':' || p.account_number) = ANY(:keys)
+      AND a.destination_key = ANY(:keys)
 """
 DEVICE_EDGES = """
-    SELECT l.from_key, l.to_key FROM account_link l
-    WHERE l.link_type = 'device' AND l.from_key = ANY(:keys)
+    SELECT l.from_key, l.to_key FROM account_link l JOIN pix_analysis a ON a.id = l.pix_analysis_id
+    WHERE a.status = 'approved' AND l.link_type = 'device' AND l.from_key = ANY(:keys)
 """
 
 
@@ -62,7 +65,7 @@ def load_edges(keys: list) -> tuple:
     engine = create_engine(DbUtils.database_url())
     try:
         with engine.connect() as connection:
-            pix = connection.execute(text(PIX_EDGES), {"keys": keys}).mappings().all()
+            pix = connection.execute(text(PIX_EDGES), {"keys": keys, "ispb": INSTITUTION_ISPB}).mappings().all()
             device = connection.execute(text(DEVICE_EDGES), {"keys": keys}).mappings().all()
     finally:
         engine.dispose()
@@ -145,7 +148,7 @@ def main() -> int:
         print("Rode antes: python scripts/seed_demo.py")
         return 1
 
-    accounts = json.loads(accounts_file.read_text())
+    accounts = json.loads(accounts_file.read_text(encoding="utf-8"))
     pix, device = load_edges(list(accounts))
     graph, shared = build_graph(accounts, pix, device)
     draw(graph, shared)

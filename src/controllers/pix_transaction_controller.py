@@ -11,6 +11,7 @@ from dtos import PixAnalysisDTO
 from errors import (
     AccountOpenedAfterTransaction,
     InvalidTransactionDate,
+    InconsistentAccountIdentity,
     NotFoundPixAnalysis,
     OutOfOrderTransaction,
     TransactionIdConflict,
@@ -19,7 +20,7 @@ from models import PayerAccount, PixAnalysis
 from repositories import PayerAccountRepository, PixAnalysisRepository
 from rules import PixRequest, decide
 from rules.laranja import dict_signals
-from utils.payload_normalizer import normalize_payload
+from utils.payload_normalizer import normalize_payload, validate_text
 
 
 class PixTransactionController(BaseController):
@@ -83,6 +84,7 @@ class PixTransactionController(BaseController):
                     return self.replay(existing, payload), False
 
                 self.ensure_in_order(payer_account, request)
+                self.ensure_identity(request)
 
                 context = self.analysis_repository.build_context(payer_account, request, payer_dict, destination_dict)
                 decision = decide(context)
@@ -90,7 +92,8 @@ class PixTransactionController(BaseController):
                     payer_account, request, payload, decision, received_at, payer_dict, destination_dict
                 )
                 self.session.flush()
-                self.analysis_repository.links.create_edges(analysis, request)
+                if decision.status == "approved":
+                    self.analysis_repository.links.create_edges(analysis, request)
                 self.session.flush()
         except IntegrityError as error:
             if not self.is_unique_violation(error):
@@ -119,7 +122,8 @@ class PixTransactionController(BaseController):
 
         payer, destination = self.dict_controller.lookup(payer_query, destination_query)
 
-        return dict_signals(payer.status, payer.response), dict_signals(destination.status, destination.response)
+        return (dict_signals(payer.status, payer.response, request.transaction_date),
+                dict_signals(destination.status, destination.response, request.transaction_date))
 
     def ensure_in_order(self, payer_account: PayerAccount, request: PixRequest) -> None:
         """Recusa o Pix anterior ao último já analisado da mesma conta (422).
@@ -133,11 +137,23 @@ class PixTransactionController(BaseController):
                 request.transaction_date.isoformat(), latest.astimezone(timezone.utc).isoformat()
             )
 
+    def ensure_identity(self, request: PixRequest) -> None:
+        source = (request.payer_document, request.source_opening_date)
+        destination = (request.destination_document, request.destination_opening_date)
+        if request.payer_key == request.destination_key and source != destination:
+            raise InconsistentAccountIdentity("destination")
+        for side, key, identity in (("source", request.payer_key, source),
+                                    ("destination", request.destination_key, destination)):
+            known = self.analysis_repository.get_account_identity(key)
+            if known is not None and tuple(known) != identity:
+                raise InconsistentAccountIdentity(side)
+
     def get_by_transaction_id(self, transaction_id: str) -> dict:
         """Devolve a análise gravada, sem rodar as regras de novo.
 
         Não atualiza a idade do aparelho nem depende da versão atual da política.
         """
+        validate_text(transaction_id)
         analysis = self.analysis_repository.get_by_transaction_id(transaction_id)
         if analysis is None:
             raise NotFoundPixAnalysis(transaction_id)
@@ -163,6 +179,7 @@ class PixTransactionController(BaseController):
         entendeu o pedido, mas o valor não pode existir. Normaliza as datas
         para UTC e os documentos para só dígitos.
         """
+        validate_text(payload)
         source = payload["source_account"]
         destination = payload["destination_account"]
 

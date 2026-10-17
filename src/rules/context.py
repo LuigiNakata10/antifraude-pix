@@ -55,6 +55,9 @@ class DictSignals:
     status: str
     e1: Optional[bool]
     e4: Optional[bool]
+    e1_since: Optional[datetime] = None
+    e4_since: Optional[datetime] = None
+    observed: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -80,7 +83,7 @@ class AccountFlows:
     received_30d_from_e1: int = 0
     # A conta usou, em 30 dias, um aparelho também usado por uma conta com E1.
     shares_device_with_e1: bool = False
-    # Titulares distintos com Pix aprovado com a conta, em qualquer direção e em todo o histórico.
+    # Contas distintas com Pix aprovado em qualquer direção, na janela de 30 dias.
     counterparties: int = 0
     # Titulares distintos que enviaram na última hora, e quantos nunca tinham enviado antes dela.
     holders_1h: int = 0
@@ -97,11 +100,6 @@ class AccountFlows:
 class MuleHistory:
     """O histórico de que o módulo de conta laranja precisa, lido do banco depois da trava."""
 
-    # A `transaction_date` da primeira análise em que o motor viu o DESTINO
-    # marcado (E1) ou com notificações abertas (E4). `None` se nunca viu: o
-    # início da evidência é, então, o próprio Pix atual.
-    destination_e1_since: Optional[datetime] = None
-    destination_e4_since: Optional[datetime] = None
     # A primeira aprovação deste pagador para este titular de destino. Dela saem
     # o "destinatário conhecido" e a "relação anterior".
     first_approval_to_destination: Optional[datetime] = None

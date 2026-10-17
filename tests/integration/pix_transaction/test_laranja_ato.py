@@ -43,7 +43,7 @@ class TestAct:
 
         assert act_of(PixAccount(), 50 * REAL, stranger) == "outro"
 
-    @pytest.mark.parametrize("amount, expected", [(980 * REAL, "outro"), (1000 * REAL, "repasse")])
+    @pytest.mark.parametrize("amount, expected", [(980 * REAL, "outro"), (1000 * REAL, "repasse_aparente")])
     def test_forwarding_starts_at_half_of_what_was_received_in_the_last_hour(self, amount, expected):
         """Recebeu R$ 2.000 na última hora: R$ 980 são 49%, R$ 1.000 são 50% (o limite entra)."""
         payer = PixAccount()
@@ -57,7 +57,7 @@ class TestAct:
         payer.fund(2000 * REAL, -30 * MINUTE)
         payer.send(600 * REAL, -10 * MINUTE, "approved", destination=PixDestination())
 
-        assert act_of(payer, 400 * REAL, PixDestination()) == "repasse"
+        assert act_of(payer, 400 * REAL, PixDestination()) == "repasse_aparente"
 
     def test_below_one_thousand_received_it_is_not_forwarding(self):
         payer = PixAccount()
@@ -84,7 +84,7 @@ class TestAct:
         payer.fund(2000 * REAL, -30 * MINUTE)
         shell_company = PixDestination(age=10 * DAY, document=RandomGenerator.generate_cnpj())
 
-        assert act_of(payer, 1500 * REAL, shell_company) == "repasse"
+        assert act_of(payer, 1500 * REAL, shell_company) == "repasse_aparente"
 
     def test_forwarding_to_an_established_company_is_not_forwarding(self):
         payer = PixAccount()
@@ -93,12 +93,12 @@ class TestAct:
 
         assert act_of(payer, 1500 * REAL, supplier) == "outro"
 
-    def test_a_typical_spend_prevails_over_forwarding(self):
+    def test_forwarding_prevails_over_a_typical_spend(self):
         payer, friend = PixAccount(), PixDestination()
         payer.send(100 * REAL, -3 * HOUR, "approved", destination=friend)
         payer.fund(1000 * REAL, -30 * MINUTE)
 
-        assert act_of(payer, 900 * REAL, friend) == "gasto_tipico"
+        assert act_of(payer, 900 * REAL, friend) == "repasse_aparente"
 
     def test_a_clean_account_forwarding_is_decided_by_the_base_rules(self):
         """Repasse sem nenhuma evidência da conta não é rejeitado: o módulo só combina estado e ato."""

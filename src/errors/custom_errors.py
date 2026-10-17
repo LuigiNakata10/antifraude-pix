@@ -1,6 +1,15 @@
 from errors import QIException
 
 
+class InconsistentAccountIdentity(QIException):
+    code = "QIT003007"
+
+    def __init__(self, side) -> None:
+        super().__init__("Inconsistent Account", self.code, 422,
+                         f"The {side} account owner or opening date conflicts with known history.",
+                         f"Titular ou abertura da conta ({side}) diverge do histórico observado.")
+
+
 class InvalidTransactionDate(QIException):
     """A data tem o formato certo, mas não existe no calendário (30 de fevereiro, 25h).
 

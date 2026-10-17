@@ -4,7 +4,7 @@ from os import environ
 import requests
 
 
-MOCKSERVER_URL = f"http://localhost:{environ.get('MOCKSERVER_PORT', '1080')}"
+MOCKSERVER_URL = environ.get("MOCKSERVER_URL", f"http://localhost:{environ.get('MOCKSERVER_PORT', '1080')}")
 STATISTICS_PATH = "/dict/v1/statistics"
 
 # Cada expectation nova ganha uma prioridade MAIOR que a anterior: roteirizar a
@@ -13,9 +13,10 @@ STATISTICS_PATH = "/dict/v1/statistics"
 _priority = itertools.count(10)
 
 
-def statistics(mule=0, scammer=0, reporters=0, open_reports=0, mule_m12=None) -> dict:
+def statistics(mule=0, scammer=0, reporters=0, open_reports=0, mule_m12=None, e1_since=None, e4_since=None) -> dict:
     """O corpo de resposta do DICT simulado, com os contadores pedidos (janela d90)."""
     return {
+        "EvidenceSince": {"E1": e1_since, "E4": e4_since},
         "OwnerStatistics": {
             "FraudMarkers": {
                 "MuleAccounts": {"d90": mule, "m12": mule if mule_m12 is None else mule_m12, "m60": mule},

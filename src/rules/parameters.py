@@ -5,7 +5,7 @@ from datetime import timedelta
 # pelos bancos. Todos os valores são em centavos. Cada um tem o porquê ao lado.
 
 # Versão dos parâmetros e da ordem das regras: vai em todo `metadata`.
-POLICY_VERSION = "pix-v1"
+POLICY_VERSION = "pix-v1.1"
 
 # R1 — conta pagadora nova.
 # Menos de 7 dias completos entre a abertura e o Pix. Com exatamente 7 dias a
@@ -63,13 +63,13 @@ E2_SHARE_PERCENT = 50
 E2_REPUTATION_AGE = timedelta(days=90)
 E2_REPUTATION_COUNTERPARTIES = 10
 
-# E3 — muitos titulares enviando, a maioria pela primeira vez, na última hora:
+# E3 — muitos titulares enviando, pelo menos três estreantes, na última hora:
 # o formato de uma conta de passagem. Empresa recebe de muita gente por
 # natureza, então o limiar do CNPJ é bem maior.
 E3_HOLDERS = 5
 E3_FIRST_TIME_HOLDERS = 3
 E3_HOLDERS_COMPANY = 30
-E3_FIRST_TIME_HOLDERS_COMPANY = 16
+E3_FIRST_TIME_HOLDERS_COMPANY = 3
 
 # E5 — conta com menos de 7 dias recebendo volume alto de vários titulares:
 # mais de R$ 5.000 em 24 h, de 3 ou mais titulares.
@@ -94,6 +94,6 @@ E5_WINDOW = timedelta(hours=24)
 # Gasto típico — o padrão de quem usa a conta para a própria vida: até R$ 1.000
 # para um titular que o pagador já conhecia, ou para um CNPJ com conta de 90
 # dias ou mais. O teto e a exigência de CNPJ antigo existem para o repasse não
-# se disfarçar de "gasto" numa empresa de fachada recém-aberta.
+# se disfarçar de "gasto" numa empresa de fachada recém-aberta. Repasse é avaliado primeiro.
 TYPICAL_SPEND_LIMIT = 1000 * 100
 ESTABLISHED_CNPJ_AGE = timedelta(days=90)

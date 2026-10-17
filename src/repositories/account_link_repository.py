@@ -111,16 +111,20 @@ class AccountLinkRepository:
         return int(query.with_entities(func.count(distinct(PixAnalysis.payer_document))).scalar())
 
     def _counterparties(self, key: str, t: datetime) -> int:
-        """Titulares distintos com Pix aprovado com a conta, em qualquer direção, em todo o histórico."""
+        """Contas distintas com Pix aprovado em qualquer direção, em 30 dias."""
         received_from = (
-            select(PixAnalysis.payer_document.label("document"))
+            select(AccountLink.from_key.label("account"))
+            .select_from(PixAnalysis)
             .join(AccountLink, AccountLink.pix_analysis_id == PixAnalysis.id)
-            .where(AccountLink.link_type == "pix", AccountLink.to_key == key, PixAnalysis.status == "approved", AccountLink.seen_at <= t)
+            .where(AccountLink.link_type == "pix", AccountLink.to_key == key, PixAnalysis.status == "approved",
+                   AccountLink.seen_at > t - E2_WINDOW, AccountLink.seen_at <= t)
         )
         sent_to = (
-            select(PixAnalysis.destination_document.label("document"))
+            select(AccountLink.to_key.label("account"))
+            .select_from(PixAnalysis)
             .join(AccountLink, AccountLink.pix_analysis_id == PixAnalysis.id)
-            .where(AccountLink.link_type == "pix", AccountLink.from_key == key, PixAnalysis.status == "approved", AccountLink.seen_at <= t)
+            .where(AccountLink.link_type == "pix", AccountLink.from_key == key, PixAnalysis.status == "approved",
+                   AccountLink.seen_at > t - E2_WINDOW, AccountLink.seen_at <= t)
         )
 
         return int(self.session.execute(select(func.count()).select_from(union(received_from, sent_to).subquery())).scalar())
@@ -131,16 +135,16 @@ class AccountLinkRepository:
         devices = {
             row[0]
             for row in self.session.query(AccountLink.to_key)
+            .join(PixAnalysis, PixAnalysis.id == AccountLink.pix_analysis_id)
             .filter(
                 AccountLink.link_type == "device",
                 AccountLink.from_key == key,
                 AccountLink.seen_at > start,
                 AccountLink.seen_at <= t,
+                PixAnalysis.status == "approved",
             )
             .all()
         }
-        if current_device_id is not None:
-            devices.add(f"device:{current_device_id}")
         if not devices:
             return False
 
@@ -154,6 +158,7 @@ class AccountLinkRepository:
                 AccountLink.seen_at > start,
                 AccountLink.seen_at <= t,
                 PixAnalysis.payer_dict_e1.is_(True),
+                PixAnalysis.status == "approved",
             )
             .first()
             is not None
