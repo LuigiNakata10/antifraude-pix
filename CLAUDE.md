@@ -6,19 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Desafio do Bootcamp QI Tech 2026: motor antifraude Pix. Toda a documentação e os commits do time são em português; mantenha isso.
 
-O código parte da `main` do Base Service (`bootcamp-base-api`, cópia sem histórico). **Implementado:** schema de entrada, banco e models, DTO, erros `QIT003001`–`QIT003006`, POST e GET completos, trava por conta pagadora, idempotência (200/409), contexto histórico e a política R1–R4 (C01–C21). **Ainda não existe:** consulta ao DICT (`DictConnector.get_statistics` levanta `NotImplementedError`; o controller nem o chama, e `analysis_details` grava `dict_status: "nao_consultado"`), grafo de contas (`account_link` existe no banco e não é gravada) e o módulo de laranja (o lugar de L1–L3 está marcado em `rules/policy.py`).
+O código parte da `main` do Base Service (`bootcamp-base-api`, cópia sem histórico). **Tudo o que o desenho prevê está implementado e testado (204 testes):** POST e GET, trava por conta pagadora, idempotência (200/409), contexto histórico, a política R1–R4 (C01–C21) e o módulo de conta laranja (DICT simulado com cache, grafo de contas, E1–E5, ato e regras L1–L3, P01–P13), mais os scripts da demo. Não há `NotImplementedError` em `src/`.
 
 ## Comandos
 
 ```bash
-docker compose up -d                  # API (3000), Postgres e mockserver; espere o healthcheck (healthy)
+docker compose up -d                  # API (3000), Postgres e mockserver (DICT simulado); espere o healthcheck (healthy)
 docker compose down -v                # OBRIGATÓRIO ao mudar database/database.sql
 docker compose build --no-cache api   # ao mudar requirements.txt
-pytest                                # roda na máquina, por HTTP, contra a API já de pé (~12 s)
-pytest tests/integration/pix_transaction/test_contract.py::TestPixTransactionContract::test_post_without_token_is_forbidden
+pytest                                # roda na máquina, por HTTP, contra a API já de pé (~30 s)
+pytest tests/integration/pix_transaction/test_policy.py::TestNewDeviceHighAmount
+python scripts/seed_demo.py           # a demo pela API e pelo mock (pip install -r scripts/requirements.txt)
+python scripts/graph_demo.py          # desenha output/demo/grafo-demo.png a partir de account_link
+flake8 src tests scripts              # config em .flake8
 ```
 
-Se 5432/5433 estiverem ocupadas no host, crie `.env` (fora do Git) com `DB_PORT=<livre>` e a mesma porta na `DATABASE_URL`.
+Se 5432/5433 estiverem ocupadas no host, crie `.env` (fora do Git) com `DB_PORT=<livre>` e a mesma porta na `DATABASE_URL`. Os testes e os scripts leem `DATABASE_URL`, `API_PORT` e `MOCKSERVER_PORT` do ambiente (do `.env`).
 
 ## Decisões já fechadas e desvios do guia
 
@@ -31,7 +34,20 @@ Se 5432/5433 estiverem ocupadas no host, crie `.env` (fora do Git) com `DB_PORT=
 - `amount` recusa float (inclusive `150000.0`) via `integer_fields` em `SchemaHandler.validate`; só ele, porque latitude/longitude são floats legítimos.
 - Documentos: aceita formatado ou só dígitos, grava só dígitos. `channel` é texto livre. Padrões de agência (`\d{1,10}`) e conta (`\d{1,20}`) são suposição.
 - `src/rules/` é pacote puro (sem banco nem I/O), chamado só pelo controller; os parâmetros e o porquê de cada um estão em `rules/parameters.py`. `reason` traz só os campos da regra que decidiu (R3 usa `observed_count`/`limit_count`).
+- Auditoria: os testes de DICT, grafo e ato leem `analysis_details`, as colunas do DICT e `dict_lookup` por conexão direta (só SELECT, `DbUtils`), porque isso nunca volta na resposta. Junto do gatilho de `test_persistence.py` são as exceções ao black box.
 - `test_persistence.py` tem uma exceção consciente ao black box: um gatilho instalado por conexão direta ao Postgres prova que falha de gravação não responde sucesso. "GET após mudança de política" não tem teste (exigiria alterar o código em execução).
+
+### Módulo de conta laranja (decisões fechadas)
+
+- **L2** rejeita o pagador `confirmada` em todo ato que não seja gasto típico (repasse **e** "outro"). Ordem: R1, R2, L1, L2, L3, R4, R3. O módulo nunca pede 2FA.
+- **DICT:** o destino é sempre ao vivo (cache de 1 h só como reserva, `dict_status: cache`); o pagador vem do cache de 24 h (`dict_lookup`, append-only, validade pelo relógio do servidor) e só é consultado no primeiro Pix. As duas consultas em paralelo, um prazo de 200 ms, **antes da trava**; a gravação no cache é uma transação curta própria. Indisponível = `None` (desconhecido), nunca evidência. A mesma chave `ispb:agência:conta` serve de cache para uma conta como destino e como pagador: um Pix que *entrou* na conta alimenta o cache do pagador (uma marcação nova só vale quando ele expira; os testes P04 e a demo usam o DICT fora do ar para o dinheiro entrar sem cache).
+- **Início da evidência** para a "relação anterior": E1 e E4 = `transaction_date` da primeira análise em que o motor viu a conta marcada (ou o Pix atual); E2, E3 e E5 = início da janela. Só relógio de negócio.
+- **"Recebido" e "enviado" são só Pix `approved`**; o Pix atual nunca entra no histórico. E1 de quem enviou fica em `pix_analysis.payer_dict_e1` (E2 soma o que entrou de quem tinha E1 naquele Pix).
+- **Arestas** (`pix`, `device`, `document`) gravadas em `account_link` para toda análise, no mesmo commit. Chave da conta pagadora: `INSTITUTION_ISPB:agência:conta` (`INSTITUTION_ISPB` fictício, padrão `99999999`).
+- **Gasto típico prevalece sobre repasse.** E3 para CNPJ: 30 titulares e 16 de primeira vez. Parâmetros e "porquê" em `src/rules/parameters.py`.
+- **Proposta vs. teste:** a proposta cita P12 com "4 titulares" e "E3 e E5", mas E3 exige 5; o teste usa 5.
+- O `reason` das regras L traz `account`, `account_state`, `evidences` e `act`; nunca documento nem identidade de conta marcada.
+- O Mockserver (5.15.0) carrega `mocks/dict_expectations.json` (padrão: nenhuma marcação, prioridade 0); os testes roteirizam com prioridade crescente por conta. **Não use o log do Mockserver nos testes** (`retrieve` e `clear` degradam com o volume): conta consultas pelas linhas de `dict_lookup`.
 
 ## Documentos e hierarquia entre eles
 
@@ -52,12 +68,12 @@ python scripts/gerar_pdf_dados_fluxo.py
 
 Lê o Markdown de dados e fluxo e reescreve `output/pdf/dados-e-fluxo-antifraude-pix.pdf`. O renderer é específico desse documento (não é conversor Markdown genérico) e desenha os fluxos como vetores equivalentes aos blocos Mermaid; se mudar a estrutura do Markdown ou os diagramas, o script precisa acompanhar. PDFs são `binary` no `.gitattributes`.
 
-## Arquitetura planejada (do guia de desenvolvimento)
+## Arquitetura (do guia de desenvolvimento)
 
 - Stack: Python sobre o **Base Service** da organização (camadas e envelope de erro dele), Postgres, `docker compose`, `pytest`. Critério de pronto: clonar, `docker compose up` e `pytest` verdes sem passo manual.
 - Rotas exatas do desafio: `POST /pix/transaction` (analisa e grava) e `GET /pix/transaction/{id}` (devolve a análise gravada, sem reexecutar regras). Header `INTERNAL-TOKEN` obrigatório (403 sem ele).
 - Resposta: `key`, `status` ∈ {`approved`, `two_factor_required`, `rejected`}, `metadata` com `policy_version` e **um único** `reason` (código, descrição, valores observados e limiar em centavos). Sem lista de alertas, sem score ou probabilidade.
-- Camadas: resource `src/resources/pix_transaction.py` → controller (orquestração, trava por conta pagadora, commit) → repositórios (todas as consultas) → `src/rules/` (regras base, `laranja.py` e a política de ordem, **puras, sem banco**). Conector DICT em `src/connectors/dict_connector.py`, schema de entrada em `src/schemas/post_pix_transaction.json`, erros em `src/errors/`.
+- Camadas: resource `src/resources/pix_transaction.py` → controller (orquestração, trava por conta pagadora, commit) → repositórios (todas as consultas) → `src/rules/` (regras base, `laranja.py` e a política de ordem, **puras, sem banco**). `src/rules/laranja.py` (classificação, ato, L1–L3). `DictController` decide cache × ao vivo; conector DICT em `src/connectors/dict_connector.py`, schema de entrada em `src/schemas/post_pix_transaction.json`, erros em `src/errors/`.
 - Uma única camada monta o contexto histórico para R1–R4 e o módulo de laranja; a política recebe esse contexto e devolve o primeiro resultado aplicável na ordem **R1, R2, L1, L2, L3, R4, R3** (rejeição antes de 2FA).
 - Banco é a única fonte de estado (nenhum contador em memória). Grafo de contas fica no Postgres (`account_link`), não em banco de grafos. DICT é mock (Mockserver no compose, `mocks/dict_expectations.json`).
 - Idempotência por `transaction_id` do cliente: mesmo conteúdo normalizado → 200 com análise original; conteúdo diferente → 409; `UNIQUE(transaction_id)` como garantia final.
