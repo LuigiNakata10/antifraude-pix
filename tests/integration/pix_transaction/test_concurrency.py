@@ -1,15 +1,7 @@
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
-from tests.utils import PixAccount, RequestGenerator
-
-THREADS = 8
-
-
-def post_all(payloads: list) -> list:
-    """Dispara todos os pedidos ao mesmo tempo e devolve (status HTTP, corpo) de cada um."""
-    with ThreadPoolExecutor(max_workers=min(len(payloads), THREADS)) as pool:
-        return list(pool.map(RequestGenerator.POST_pix_transaction, payloads))
+from tests.utils import PixAccount
+from tests.utils.concurrency import THREADS, post_all
 
 
 class TestPixTransactionConcurrency:
