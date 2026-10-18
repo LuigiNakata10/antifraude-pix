@@ -16,7 +16,15 @@ docker compose --profile test run --rm --no-deps tests \
 docker compose --profile test run --rm --no-deps tests python -m flake8 .
 ```
 
-Com Python 3.11+ no host, `pip install -r requirements-dev.txt` e `pytest` também funcionam, contra a API já de pé.
+Para rodar com Python 3.11+ no host, publique também as portas do banco e do mock com o compose complementar. O compose padrão só as disponibiliza dentro da rede dos contêineres:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up --build -d --wait
+python -m pip install -r requirements-dev.txt
+pytest
+```
+
+Por padrão, o banco atende em `localhost:5432`, o mock em `localhost:1080` e a API em `localhost:3000`. Se alterar portas ou token, ajuste o `.env` conforme o [exemplo](../.env.example), incluindo a porta do banco em `DATABASE_URL`.
 
 ## Estratégia
 

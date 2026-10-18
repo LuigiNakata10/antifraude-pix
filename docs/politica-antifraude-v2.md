@@ -196,7 +196,7 @@ Pressupõem entrada válida e ausência de condições não mencionadas. Valores
 | C17 | Terceira tentativa em 2 minutos que leva o acumulado acima de R$ 20.000 | `rejected` | R2 prevalece sobre R3 |
 | C18 | Aprovação de R$ 100; 10 minutos depois, R$ 6.000 no mesmo aparelho | `two_factor_required` | R4: espera de 24 h incompleta |
 | C19 | Primeira aprovação há 26 h, outra há 1 h; agora R$ 6.000 | `approved` | Espera cumprida e não reiniciada |
-| C20 | Conta de 3 dias; Pix de R$ 11.000 | `rejected` | Só R1, embora R2 também se aplicasse |
+| C20 | Conta de 3 dias; Pix de R$ 21.000 | `rejected` | Só R1, embora R2 também se aplicasse |
 | C21 | Aparelho sem as 24 h; terceiro pedido na janela, de R$ 5.000 | `two_factor_required` | Só R4, embora R3 também se aplicasse |
 
 Para que a R5 não esconda o comportamento que cada cenário verifica, os testes começam o histórico com uma aprovação de valor compatível com a média.
