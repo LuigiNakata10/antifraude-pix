@@ -2,7 +2,7 @@ from datetime import timedelta
 
 import pytest
 
-from tests.utils import DbUtils, PixAccount, PixDestination, RandomGenerator
+from tests.utils import DictMock, PixAccount, PixDestination, RandomGenerator
 from tests.utils.assertions import assert_decision
 
 REAL = 100
@@ -11,100 +11,103 @@ HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
 
 
-def act_of(payer: PixAccount, amount: int, destination: PixDestination, when: timedelta = timedelta(0)) -> str:
-    _, transaction_id = payer.record(amount, when, destination=destination)
+def suspect_payer():
+    """E4 sozinha permite outros atos, mas rejeita repasse aparente por L3."""
+    payer = PixAccount()
+    DictMock.mark(payer, open_reports=2)
+    return payer
 
-    return DbUtils.analysis_row(transaction_id)["analysis_details"]["act"]
 
-
-class TestAct:
-    """O ato do pagador: gasto típico, repasse ou outro."""
-
-    def test_a_small_payment_to_a_known_recipient_is_a_typical_spend(self):
+class TestPaymentContext:
+    @pytest.mark.parametrize("amount,expected", [(100000, "approved"), (100001, "rejected")])
+    def test_a_marked_payer_can_pay_a_known_recipient_only_up_to_the_typical_limit(self, amount, expected):
         payer, friend = PixAccount(), PixDestination()
+        DictMock.unavailable(payer)
         payer.send(100 * REAL, -3 * HOUR, "approved", destination=friend)
+        DictMock.mark(payer, mule=1)
 
-        assert act_of(payer, 1000 * REAL, friend) == "gasto_tipico"
+        _, response = payer.pix(amount, destination=friend)
 
-    def test_one_cent_above_the_typical_spend_limit_is_something_else(self):
-        payer, friend = PixAccount(), PixDestination()
-        payer.send(100 * REAL, -3 * HOUR, "approved", destination=friend)
+        assert_decision(response, expected, "POLICY_PASSED" if expected == "approved" else "MULE_PAYER")
 
-        assert act_of(payer, 1000 * REAL + 1, friend) == "outro"
-
-    @pytest.mark.parametrize("age_days, expected", [(90, "gasto_tipico"), (89, "outro")])
-    def test_a_company_needs_to_be_90_days_old_to_be_a_typical_destination(self, age_days, expected):
+    @pytest.mark.parametrize("age_days,expected", [(90, "approved"), (89, "rejected")])
+    def test_a_marked_payer_can_pay_a_small_bill_only_to_an_established_company(self, age_days, expected):
+        payer = PixAccount()
+        DictMock.mark(payer, mule=1)
         company = PixDestination(age=age_days * DAY, document=RandomGenerator.generate_cnpj())
 
-        assert act_of(PixAccount(), 500 * REAL, company) == expected
+        _, response = payer.pix(500 * REAL, destination=company)
 
-    def test_a_person_never_counts_as_a_typical_destination_without_a_prior_relationship(self):
-        stranger = PixDestination(age=3650 * DAY)
+        assert_decision(response, expected, "POLICY_PASSED" if expected == "approved" else "MULE_PAYER")
 
-        assert act_of(PixAccount(), 50 * REAL, stranger) == "outro"
-
-    @pytest.mark.parametrize("amount, expected", [(980 * REAL, "outro"), (1000 * REAL, "repasse_aparente")])
-    def test_forwarding_starts_at_half_of_what_was_received_in_the_last_hour(self, amount, expected):
-        """Recebeu R$ 2.000 na última hora: R$ 980 são 49%, R$ 1.000 são 50% (o limite entra)."""
+    def test_a_marked_payer_cannot_treat_a_small_payment_to_a_stranger_as_a_typical_spend(self):
         payer = PixAccount()
+        DictMock.mark(payer, mule=1)
+
+        _, response = payer.pix(50 * REAL, destination=PixDestination(age=3650 * DAY))
+
+        assert_decision(response, "rejected", "MULE_PAYER")
+
+    @pytest.mark.parametrize("amount,expected", [(99999, "approved"), (100000, "rejected")])
+    def test_a_suspect_payer_is_stopped_at_half_of_the_approved_incoming_amount(self, amount, expected):
+        payer = suspect_payer()
         payer.fund(1000 * REAL, -30 * MINUTE)
         payer.fund(1000 * REAL, -20 * MINUTE)
 
-        assert act_of(payer, amount, PixDestination()) == expected
+        _, response = payer.pix(amount)
 
-    def test_what_the_account_already_sent_in_the_hour_counts_towards_the_half(self):
-        payer = PixAccount()
+        assert_decision(response, expected, "POLICY_PASSED" if expected == "approved" else "SUSPECTED_MULE_FORWARDING")
+
+    def test_splitting_a_forward_does_not_avoid_the_half_threshold(self):
+        payer = suspect_payer()
         payer.fund(2000 * REAL, -30 * MINUTE)
-        payer.send(600 * REAL, -10 * MINUTE, "approved", destination=PixDestination())
+        payer.send(600 * REAL, -10 * MINUTE, "approved")
 
-        assert act_of(payer, 400 * REAL, PixDestination()) == "repasse_aparente"
+        _, response = payer.pix(400 * REAL)
 
-    def test_below_one_thousand_received_it_is_not_forwarding(self):
-        payer = PixAccount()
+        assert_decision(response, "rejected", "SUSPECTED_MULE_FORWARDING")
+
+    def test_a_suspect_payer_is_not_blocked_as_forwarding_below_the_minimum_incoming_amount(self):
+        payer = suspect_payer()
         payer.fund(999 * REAL, -30 * MINUTE)
 
-        assert act_of(payer, 900 * REAL, PixDestination()) == "outro"
+        _, response = payer.pix(900 * REAL)
 
-    def test_what_was_received_more_than_an_hour_ago_does_not_count(self):
-        payer = PixAccount()
+        assert_decision(response, "approved", "POLICY_PASSED")
+
+    def test_old_receipts_do_not_block_a_current_payment_as_forwarding(self):
+        payer = suspect_payer()
         payer.fund(3000 * REAL, -61 * MINUTE)
 
-        assert act_of(payer, 2000 * REAL, PixDestination()) == "outro"
+        _, response = payer.pix(2000 * REAL)
 
-    def test_a_rejected_or_two_factor_pix_is_not_money_received(self):
-        """'Recebido' é o que o motor aprovou, não o que alguém tentou mandar."""
-        payer = PixAccount()
-        sender = PixAccount()
-        sender.send(6000 * REAL, -30 * MINUTE, "two_factor_required", destination=payer.as_destination())
+        assert_decision(response, "approved", "POLICY_PASSED")
 
-        assert act_of(payer, 3000 * REAL, PixDestination()) == "outro"
+    @pytest.mark.parametrize("incoming_status", ["rejected", "two_factor_required"])
+    def test_an_unapproved_incoming_request_cannot_make_the_receiver_look_like_a_forwarder(self, incoming_status):
+        payer = suspect_payer()
+        sender = PixAccount(age=3 * DAY if incoming_status == "rejected" else 365 * DAY)
+        amount = 1800 * REAL if incoming_status == "rejected" else 6000 * REAL
+        sender.send(amount, -30 * MINUTE, incoming_status, destination=payer.as_destination())
 
-    def test_forwarding_to_a_company_with_a_young_account_is_still_forwarding(self):
-        payer = PixAccount()
+        _, response = payer.pix(3000 * REAL)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+
+    @pytest.mark.parametrize("age_days,expected", [(89, "rejected"), (90, "approved")])
+    def test_a_suspect_payer_can_forward_to_an_established_company_under_the_current_exception(self, age_days, expected):
+        payer = suspect_payer()
         payer.fund(2000 * REAL, -30 * MINUTE)
-        shell_company = PixDestination(age=10 * DAY, document=RandomGenerator.generate_cnpj())
+        company = PixDestination(age=age_days * DAY, document=RandomGenerator.generate_cnpj())
 
-        assert act_of(payer, 1500 * REAL, shell_company) == "repasse_aparente"
+        _, response = payer.pix(1500 * REAL, destination=company)
 
-    def test_forwarding_to_an_established_company_is_not_forwarding(self):
-        payer = PixAccount()
-        payer.fund(2000 * REAL, -30 * MINUTE)
-        supplier = PixDestination(age=400 * DAY, document=RandomGenerator.generate_cnpj())
+        assert_decision(response, expected, "POLICY_PASSED" if expected == "approved" else "SUSPECTED_MULE_FORWARDING")
 
-        assert act_of(payer, 1500 * REAL, supplier) == "outro"
-
-    def test_forwarding_prevails_over_a_typical_spend(self):
-        payer, friend = PixAccount(), PixDestination()
-        payer.send(100 * REAL, -3 * HOUR, "approved", destination=friend)
-        payer.fund(1000 * REAL, -30 * MINUTE)
-
-        assert act_of(payer, 900 * REAL, friend) == "repasse_aparente"
-
-    def test_a_clean_account_forwarding_is_decided_by_the_base_rules(self):
-        """Repasse sem nenhuma evidência da conta não é rejeitado: o módulo só combina estado e ato."""
+    def test_a_clean_account_is_not_rejected_for_forwarding_alone(self):
         payer = PixAccount()
         payer.fund(2000 * REAL, -30 * MINUTE)
 
-        _, response = payer.pix(1500 * REAL, destination=PixDestination())
+        _, response = payer.pix(1500 * REAL)
 
         assert_decision(response, "approved", "POLICY_PASSED")

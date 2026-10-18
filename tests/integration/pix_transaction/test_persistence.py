@@ -26,27 +26,19 @@ class TestPixTransactionPersistence:
         assert status == 201
         assert created["status"] == expected_status
         assert set(created) == {"key", "status", "metadata"}
+        assert set(created["metadata"]) == {"policy_version", "reason"}
 
         status, stored = RequestGenerator.GET_pix_transaction(payload["id"])
 
         assert status == 200
         assert stored == created
 
-    def test_the_response_never_exposes_internal_ids(self):
-        account = PixAccount()
-
-        _, response = account.pix(500 * 100)
-
-        assert set(response) == {"key", "status", "metadata"}
-        assert len(response["key"]) == 36
-        assert set(response["metadata"]) == {"policy_version", "reason"}
-
 
 class TestPixTransactionWriteFailure:
     """Falha de gravação não responde sucesso e não deixa nada pela metade.
 
     Exceção consciente ao black box: o teste conecta direto ao Postgres só
-    para instalar um gatilho que faz o INSERT da análise falhar para UM id.
+    para falhar ao gravar vínculos, DEPOIS do INSERT da análise, para UM id.
     """
 
     def test_a_failure_while_writing_leaves_nothing_behind(self):
@@ -58,17 +50,19 @@ class TestPixTransactionWriteFailure:
         with engine.connect() as connection:
             connection.exec_driver_sql(
                 "CREATE OR REPLACE FUNCTION pix_test_fail_insert() RETURNS trigger AS $$ "
-                "BEGIN RAISE EXCEPTION 'falha provocada pelo teste'; END; $$ LANGUAGE plpgsql"
+                "BEGIN IF EXISTS (SELECT 1 FROM pix_analysis WHERE id = NEW.pix_analysis_id "
+                f"AND transaction_id = '{transaction_id}') THEN "
+                "RAISE EXCEPTION 'falha provocada pelo teste'; END IF; RETURN NEW; END; $$ LANGUAGE plpgsql"
             )
             connection.exec_driver_sql(
-                "CREATE TRIGGER pix_test_fail BEFORE INSERT ON pix_analysis FOR EACH ROW "
-                f"WHEN (NEW.transaction_id = '{transaction_id}') EXECUTE FUNCTION pix_test_fail_insert()"
+                "CREATE TRIGGER pix_test_fail BEFORE INSERT ON account_link FOR EACH ROW "
+                "EXECUTE FUNCTION pix_test_fail_insert()"
             )
             try:
                 status, response = RequestGenerator.POST_pix_transaction(payload)
                 get_status, _ = RequestGenerator.GET_pix_transaction(transaction_id)
             finally:
-                connection.exec_driver_sql("DROP TRIGGER IF EXISTS pix_test_fail ON pix_analysis")
+                connection.exec_driver_sql("DROP TRIGGER IF EXISTS pix_test_fail ON account_link")
                 connection.exec_driver_sql("DROP FUNCTION IF EXISTS pix_test_fail_insert()")
         engine.dispose()
 

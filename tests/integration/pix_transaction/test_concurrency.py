@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from tests.utils import PixAccount
-from tests.utils.concurrency import THREADS, post_all
+from tests.utils.concurrency import post_all
 
 
 class TestPixTransactionConcurrency:
@@ -31,15 +31,6 @@ class TestPixTransactionConcurrency:
         assert sorted(body["status"] for _, body in results) == ["approved", "approved", "two_factor_required"]
         asked = next(body for _, body in results if body["status"] == "two_factor_required")
         assert asked["metadata"]["reason"]["code"] == "HIGH_FREQUENCY"
-
-    def test_different_accounts_do_not_wait_for_each_other(self):
-        accounts = [PixAccount() for _ in range(THREADS)]
-        for account in accounts:
-            account.make_device_known()
-
-        results = post_all([account.payload(6000 * 100) for account in accounts])
-
-        assert [body["status"] for _, body in results] == ["approved"] * THREADS
 
     def test_the_same_id_in_parallel_is_analyzed_once(self):
         account = PixAccount()

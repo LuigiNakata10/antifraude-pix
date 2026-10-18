@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import pytest
+
 from tests.utils import DbUtils, DictMock, PixAccount, PixDestination, RandomGenerator, RequestGenerator
 from tests.utils.assertions import assert_decision
 from tests.utils.pix_account import at
@@ -18,6 +20,20 @@ class TestMuleAccountRules:
     R1 a R4 não se aplicam, salvo quando dito. O DICT é o mock, roteirizado por
     teste com contas novas.
     """
+
+    @pytest.mark.parametrize(
+        "age_days,receipt,payment",
+        [(3, 600 * REAL, 900 * REAL), (7, 2000 * REAL, 3000 * REAL)],
+        ids=["new-account-modest-receipts", "seven-days-no-longer-new"],
+    )
+    def test_receipts_without_e5_do_not_cause_a_false_forwarding_rejection(self, age_days, receipt, payment):
+        payer = PixAccount(age=age_days * DAY)
+        for index in range(3):
+            payer.fund(receipt, -(20 + index) * MINUTE)
+
+        _, response = payer.pix(payment)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
 
     def test_p01_regular_payment_to_a_recipient_marked_later_is_approved(self):
         """A mãe que já mandava a mesada antes de o filho ser marcado: relação anterior, nada muda."""
@@ -164,13 +180,11 @@ class TestMuleAccountRules:
         assert_decision(response, "approved", "POLICY_PASSED")
         assert DbUtils.analysis_row(transaction_id)["analysis_details"]["payer"]["state"] == "nao"
 
-    def test_p12_a_young_account_with_E5_can_still_pay_a_phone_bill(self):
-        """Conta de 3 dias com quatro titulares: E5 sozinha, gasto típico passa."""
+    def test_p12_a_young_account_with_large_receipts_can_still_make_a_small_payment(self):
+        """E5 sozinha não deve elevar a suspeita e recusar uma saída que cabe em R1."""
         young = PixAccount(age=3 * DAY)
         hub_receiving_from_new_senders(young, senders=4, first_time=4, each=1500 * REAL)
-        phone_company = PixDestination(age=400 * DAY, document=RandomGenerator.generate_cnpj())
-
-        response, transaction_id = young.record(60 * REAL, destination=phone_company)
+        response, transaction_id = young.record(900 * REAL)
 
         assert_decision(response, "approved", "POLICY_PASSED")
         details = DbUtils.analysis_row(transaction_id)["analysis_details"]

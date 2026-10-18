@@ -32,7 +32,7 @@ class TestPixTransactionIdempotency:
     @pytest.mark.parametrize(
         "change",
         [
-            lambda p: p.update(reordered(p)),
+            lambda p: reordered(p),
             lambda p: p.update(transaction_date="2026-10-18T01:15:00Z"),
             lambda p: p.update(transaction_date="2026-10-18T01:15:00+00:00"),
             lambda p: p["source_account"].update(opening_date="2026-03-02T10:00:00+00:00"),
@@ -52,7 +52,7 @@ class TestPixTransactionIdempotency:
         status, original = RequestGenerator.POST_pix_transaction(payload)
         assert status == 201
         resend = copy.deepcopy(payload)
-        change(resend)
+        resend = change(resend) or resend
 
         status, response = RequestGenerator.POST_pix_transaction(resend)
 

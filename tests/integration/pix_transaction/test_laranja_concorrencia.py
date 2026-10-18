@@ -1,4 +1,4 @@
-from tests.utils import DbUtils, DictMock, PixAccount, PixDestination
+from tests.utils import DbUtils, DictMock, PixAccount, PixDestination, RequestGenerator
 from tests.utils.concurrency import post_all
 from tests.utils.mule_scenarios import hub_receiving_from_new_senders
 
@@ -35,8 +35,12 @@ class TestMuleAccountConcurrency:
         DictMock.mark(mule, mule=1)
         victims = [PixAccount() for _ in range(4)]
 
-        results = post_all([victim.payload(100 * REAL, destination=mule) for victim in victims])
+        payloads = [victim.payload(100 * REAL, destination=mule) for victim in victims]
+        results = post_all(payloads)
 
         assert [body["status"] for _, body in results] == ["rejected"] * 4
         assert {body["metadata"]["reason"]["code"] for _, body in results} == {"MULE_DESTINATION"}
         assert len({body["key"] for _, body in results}) == 4
+        for payload, (_, body) in zip(payloads, results):
+            assert RequestGenerator.GET_pix_transaction(payload["id"]) == (200, body)
+            assert RequestGenerator.POST_pix_transaction(payload) == (200, body)

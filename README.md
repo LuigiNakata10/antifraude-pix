@@ -77,7 +77,7 @@ docker compose exec -T db psql -U bootcamp -d bootcamp -v ON_ERROR_STOP=1 -f /mi
 docker compose up --build -d --wait
 ```
 
-A validação teve **271 testes aprovados**, cobrindo contrato, regras base, média histórica, cenários de laranja, idempotência, concorrência e rollback. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; datas não suportadas, identidade ou ordem incoerente e Pix para a mesma conta retornam 422. Contas distintas do mesmo titular continuam permitidas. Falha técnica retorna erro, sem virar decisão antifraude.
+A suíte revisada teve **254 testes aprovados**, cobrindo contrato, decisões e fricção das regras, média histórica, cenários de laranja, idempotência, concorrência e recuperação de falhas. A [revisão dos testes](docs/revisao-dos-testes-v3.md) justifica as remoções e os cenários reformulados. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; datas não suportadas, identidade ou ordem incoerente e Pix para a mesma conta retornam 422. Contas distintas do mesmo titular continuam permitidas. Falha técnica retorna erro, sem virar decisão antifraude.
 
 Para executar a demo e gerar o grafo:
 

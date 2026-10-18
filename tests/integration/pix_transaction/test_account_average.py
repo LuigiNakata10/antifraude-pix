@@ -187,14 +187,3 @@ class TestAccountAveragePrecedence:
         _, response = account.pix(7000 * REAL)
 
         assert_decision(response, "two_factor_required", "HIGH_FREQUENCY")
-
-
-class TestRaisedDailyLimit:
-    @pytest.mark.parametrize("amount,expected", [(20000 * REAL, "approved"), (20000 * REAL + 1, "rejected")])
-    def test_the_twenty_thousand_limit_is_inclusive(self, amount, expected):
-        account = PixAccount()
-        account.make_device_known(amount=2000 * REAL)
-
-        _, response = account.pix(amount)
-
-        assert_decision(response, expected, "POLICY_PASSED" if expected == "approved" else "DAILY_LIMIT_EXCEEDED")

@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+import pytest
+
 from tests.utils import PixAccount, PixDestination
 from tests.utils.assertions import assert_decision
 
@@ -68,25 +70,24 @@ class TestNewAccountLimit:
 class TestDailyLimit:
     """R2: nenhuma conta passa de R$ 20.000 aprovados em 24 h, contando o Pix atual."""
 
-    def test_c05_exactly_the_limit_is_approved(self):
+    @pytest.mark.parametrize(
+        "previous,amount,expected",
+        [(0, 2000000, "approved"), (0, 2000001, "rejected"),
+         (1700000, 300000, "approved"), (1700000, 300001, "rejected")],
+        ids=["single-exact", "single-above", "accumulated-exact", "accumulated-above"],
+    )
+    def test_the_daily_limit_applies_to_both_single_and_split_payments(self, previous, amount, expected):
         account = PixAccount()
         account.make_device_known(amount=2000 * REAL)
-        account.send(17000 * REAL, -2 * HOUR, "approved")
+        if previous:
+            account.send(previous, -2 * HOUR, "approved")
 
-        _, response = account.pix(3000 * REAL)
+        _, response = account.pix(amount)
 
-        assert_decision(response, "approved", "POLICY_PASSED")
-
-    def test_c06_one_real_above_the_limit_is_rejected(self):
-        account = PixAccount()
-        account.make_device_known(amount=2000 * REAL)
-        account.send(17000 * REAL, -2 * HOUR, "approved")
-
-        _, response = account.pix(3001 * REAL)
-
-        reason = assert_decision(response, "rejected", "DAILY_LIMIT_EXCEEDED")
-        assert reason["observed_amount"] == 20001 * REAL
-        assert reason["limit_amount"] == 20000 * REAL
+        reason = assert_decision(response, expected, "POLICY_PASSED" if expected == "approved" else "DAILY_LIMIT_EXCEEDED")
+        if expected == "rejected":
+            assert reason["observed_amount"] == previous + amount
+            assert reason["limit_amount"] == 20000 * REAL
 
     def test_approval_exactly_24_hours_ago_is_out_of_the_window(self):
         """A janela é (t - 24h, t]: o aprovado em t - 24h exatos não conta."""

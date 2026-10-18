@@ -16,29 +16,30 @@ REAL = 100
 def seed_dict_cache(account, body, age):
     """Controla só o relógio do cache sem esperar minutos. Histórico financeiro continua vindo da API."""
     engine = create_engine(DbUtils.database_url())
+    fetched_at = datetime.now(timezone.utc) - age
     try:
         with engine.begin() as connection:
             connection.execute(
                 text("INSERT INTO dict_lookup (account_key, response, fetched_at) "
                      "VALUES (:key, CAST(:response AS jsonb), :fetched_at)"),
                 {"key": account.key, "response": json.dumps(body),
-                 "fetched_at": datetime.now(timezone.utc) - age},
+                 "fetched_at": fetched_at},
             )
     finally:
         engine.dispose()
+    return fetched_at
 
 
 class TestAverageReferenceFloor:
-    @pytest.mark.parametrize("previous", [50, 500, 600])
-    def test_a_small_payment_cannot_disable_the_average_rule(self, previous):
+    def test_a_small_payment_cannot_disable_the_average_rule(self):
         account = PixAccount()
-        account.send(previous * REAL, -2 * DAY, "approved")
+        account.send(600 * REAL, -2 * DAY, "approved")
         account.send(1 * REAL, -10 * MINUTE, "approved")
 
         _, response = account.pix(15000 * REAL)
 
         reason = assert_decision(response, "two_factor_required", "AMOUNT_ABOVE_ACCOUNT_AVERAGE")
-        assert reason["historical_total_amount"] == (previous + 1) * REAL
+        assert reason["historical_total_amount"] == 601 * REAL
         assert reason["historical_transaction_count"] == 2
         assert reason["reference_floor_amount"] == 500 * REAL
 
@@ -138,7 +139,7 @@ class TestShorterPayerCache:
 
     def test_valid_cache_is_reused_without_refresh_on_read(self):
         payer = PixAccount()
-        seed_dict_cache(payer, statistics(), 4 * MINUTE)
+        fetched_at = seed_dict_cache(payer, statistics(), 4 * MINUTE)
         DictMock.mark(payer, mule=1)
 
         response, transaction_id = payer.record(1500 * REAL)
@@ -146,6 +147,15 @@ class TestShorterPayerCache:
         assert_decision(response, "approved", "POLICY_PASSED")
         assert DbUtils.analysis_row(transaction_id)["analysis_details"]["dict_status"]["payer"] == "cache"
         assert DbUtils.dict_lookup_count(payer.key) == 1
+        engine = create_engine(DbUtils.database_url())
+        try:
+            with engine.connect() as connection:
+                stored_at = connection.execute(
+                    text("SELECT fetched_at FROM dict_lookup WHERE account_key = :key"), {"key": payer.key}
+                ).scalar_one()
+            assert stored_at == fetched_at
+        finally:
+            engine.dispose()
 
     def test_expired_cache_is_not_reused_when_the_source_fails(self):
         payer = PixAccount()

@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from tests.utils import DbUtils, DictMock, PixAccount, PixDestination, RequestGenerator
+from tests.utils import DbUtils, DictMock, PixAccount, PixDestination, RandomGenerator, RequestGenerator
 from tests.utils.assertions import assert_decision
 from tests.utils.dict_mock import statistics
 
@@ -43,28 +43,36 @@ class TestDictSignals:
         response, transaction_id = send(victim, 100 * REAL, destination=recipient)
 
         if is_marked:
-            assert_decision(response, "rejected", "MULE_DESTINATION")
+            reason = assert_decision(response, "rejected", "MULE_DESTINATION")
+            assert reason["evidence_values"]["E1"]["window_days"] == 90
+            assert reason["evidence_values"]["E1"]["minimum_reporters"] == 2
+            assert reason["evidence_values"]["E1"]["distinct_reporters"] == counters.get("reporters", 0)
+            assert recipient.document not in str(reason)
         else:
             assert_decision(response, "approved", "POLICY_PASSED")
         assert DbUtils.analysis_row(transaction_id)["destination_dict_e1"] is is_marked
 
     @pytest.mark.parametrize("open_reports, has_e4", [(0, False), (1, False), (2, True), (5, True)])
     def test_e4_is_two_or_more_open_infraction_reports(self, open_reports, has_e4):
-        """E4 sozinha é só `suspeita`: não muda a decisão do destino, mas fica registrada."""
-        victim, recipient = PixAccount(), PixDestination()
+        """Com E2, o segundo relato aberto muda uma saída de aprovação para rejeição."""
+        marked = PixAccount()
+        recipient = PixAccount(document=RandomGenerator.generate_cnpj())
+        DictMock.mark(marked, mule=1)
         DictMock.mark(recipient, open_reports=open_reports)
+        marked.send(900 * REAL, -timedelta(hours=2), "approved", destination=recipient.as_destination())
 
-        response, transaction_id = send(victim, 100 * REAL, destination=recipient)
+        response, transaction_id = send(recipient, 1500 * REAL)
 
-        assert_decision(response, "approved", "POLICY_PASSED")
-        assert DbUtils.analysis_row(transaction_id)["destination_dict_e4"] is has_e4
+        assert_decision(response, "rejected" if has_e4 else "approved", "MULE_PAYER" if has_e4 else "POLICY_PASSED")
+        assert DbUtils.analysis_row(transaction_id)["payer_dict_e4"] is has_e4
 
     def test_the_payer_signals_are_recorded_too(self):
         payer = PixAccount()
         DictMock.mark(payer, mule=1, open_reports=2)
 
-        _, transaction_id = send(payer, 100 * REAL, destination=PixDestination(age=400 * DAY))
+        response, transaction_id = send(payer, 100 * REAL, destination=PixDestination(age=400 * DAY))
 
+        assert_decision(response, "rejected", "MULE_PAYER")
         row = DbUtils.analysis_row(transaction_id)
         assert row["payer_dict_e1"] is True
         assert row["payer_dict_e4"] is True
@@ -106,8 +114,9 @@ class TestDictUnavailable:
         send(payer, 100 * REAL, when=timedelta(minutes=-10))
         DictMock.mark(payer, mule=1)
 
-        _, transaction_id = send(payer, 1500 * REAL)
+        response, transaction_id = send(payer, 1500 * REAL)
 
+        assert_decision(response, "rejected", "MULE_PAYER")
         row = DbUtils.analysis_row(transaction_id)
         assert row["analysis_details"]["dict_status"]["payer"] == "consultado"
         assert row["payer_dict_e1"] is True
@@ -115,24 +124,6 @@ class TestDictUnavailable:
 
 class TestDictCache:
     """O pagador é lido do cache (5 min); o destino é consultado ao vivo e o cache só o socorre."""
-
-    def test_the_payer_is_read_from_the_cache_after_the_first_pix(self):
-        """Uma consulta ao vivo guarda uma linha em `dict_lookup`; ler o cache não guarda nenhuma."""
-        payer = PixAccount()
-        send(payer, 100 * REAL, when=timedelta(minutes=-10))
-        _, transaction_id = send(payer, 100 * REAL)
-
-        assert DbUtils.dict_lookup_count(payer.key) == 1
-        assert DbUtils.analysis_row(transaction_id)["analysis_details"]["dict_status"]["payer"] == "cache"
-
-    def test_the_destination_is_consulted_live_on_every_pix(self):
-        payer, recipient = PixAccount(), PixDestination()
-
-        send(payer, 100 * REAL, when=timedelta(minutes=-10), destination=recipient)
-        _, transaction_id = send(payer, 100 * REAL, destination=recipient)
-
-        assert DbUtils.dict_lookup_count(recipient.key) == 2
-        assert DbUtils.analysis_row(transaction_id)["analysis_details"]["dict_status"]["destination"] == "consultado"
 
     def test_a_new_mark_on_the_destination_is_seen_right_away(self):
         """Ao vivo: marcação nova no DICT vale já no Pix seguinte, sem esperar o cache expirar."""

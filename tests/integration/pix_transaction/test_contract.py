@@ -20,6 +20,7 @@ class TestPixTransactionContract:
 
         assert status == 403
         assert response["code"] == "QIT000002"
+        assert "Requisição" in response["translation"]
 
     def test_get_without_token_is_forbidden(self):
         status, response = RequestGenerator.GET_pix_transaction("pix-qualquer", with_token=False)
@@ -166,19 +167,6 @@ class TestPixTransactionContract:
         assert status == 400
         assert response["code"] == "QIT000001"
 
-    def test_geolocation_with_fractions_is_not_rejected_as_money(self):
-        """Só o valor do Pix recusa fração: -23.56 é coordenada, não dinheiro.
-
-        A prova é por exclusão: o corpo passa pelo schema e só então a API
-        o recusa por outro motivo (a conta de origem aberta depois do Pix).
-        """
-        payload = PayloadGenerator.create_pix_payload(source_opening_date="2026-10-18T10:00:00-03:00")
-
-        status, response = RequestGenerator.POST_pix_transaction(payload)
-
-        assert status == 422
-        assert response["code"] == "QIT003002"
-
     @pytest.mark.parametrize("date", ["2026-02-31T10:00:00-03:00", "2026-10-17T25:00:00-03:00", "2026-10-17T10:00:00+99:00"])
     def test_date_that_does_not_exist_is_unprocessable(self, date):
         """O formato está certo, mas a data não existe no calendário: 422, não 500.
@@ -203,17 +191,19 @@ class TestPixTransactionContract:
         assert response["code"] == "QIT003002"
 
     def test_account_opened_at_the_exact_moment_of_the_transaction_is_coherent(self):
-        """Abertura IGUAL à data do Pix não é incoerente: só a abertura estritamente posterior é recusada."""
+        """Um pedido coerente aceita abertura no mesmo instante e coordenadas fracionárias."""
         payload = PayloadGenerator.create_pix_payload(
             transaction_date="2026-10-17T22:15:00-03:00",
             source_opening_date="2026-10-18T01:15:00+00:00",
             destination_opening_date="2026-10-17T22:15:00-03:00",
             amount=100 * 100,
         )
+        payload["source"]["geolocation"] = {"latitude": -23.56, "longitude": -46.65}
 
         status, response = RequestGenerator.POST_pix_transaction(payload)
 
         assert status == 201
+        assert response["status"] == "approved"
         assert set(response) == {"key", "status", "metadata"}
 
     def test_a_pix_earlier_than_the_last_one_of_the_account_is_unprocessable(self):

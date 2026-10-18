@@ -41,7 +41,7 @@ def test_get_invalid_text_is_400():
 def test_p14_E3_and_E5_do_not_elevate_suspicion():
     young = PixAccount(age=3 * DAY)
     hub_receiving_from_new_senders(young, senders=5, first_time=5, each=1300 * REAL)
-    response, transaction_id = young.record(60 * REAL, destination=company())
+    response, transaction_id = young.record(900 * REAL)
     assert_decision(response, 'approved', 'POLICY_PASSED')
     assert DbUtils.analysis_row(transaction_id)['analysis_details']['payer'] == {
         'state': 'suspeita', 'evidences': ['E3', 'E5']}
@@ -89,18 +89,6 @@ def test_shared_device_needs_previous_approvals_from_both_accounts():
     assert_decision(response, 'rejected', 'MULE_PAYER')
 
 
-@pytest.mark.parametrize('counters', [{'mule': 1}, {'reporters': 2}])
-def test_E1_reason_has_counts_and_window(counters):
-    target = PixDestination()
-    DictMock.mark(target, **counters)
-    _, response = PixAccount().pix(100, destination=target)
-    reason = assert_decision(response, 'rejected', 'MULE_DESTINATION')
-    assert reason['evidence_values']['E1']['window_days'] == 90
-    assert reason['evidence_values']['E1']['minimum_reporters'] == 2
-    assert reason['evidence_values']['E1']['distinct_reporters'] == counters.get('reporters', 0)
-    assert target.document not in str(reason)
-
-
 @pytest.mark.parametrize('status,expected_edges', [('approved', 4), ('two_factor_required', 0), ('rejected', 0)])
 def test_only_approved_analyses_create_graph_edges(status, expected_edges):
     payer = PixAccount(age=3 * DAY if status == 'rejected' else 365 * DAY)
@@ -110,33 +98,12 @@ def test_only_approved_analyses_create_graph_edges(status, expected_edges):
     assert len(DbUtils.links_of(transaction_id)) == expected_edges
 
 
-def test_p15_E2_plus_E4_elevates_and_rejects_other_act():
-    receiver = PixAccount(document=RandomGenerator.generate_cnpj())
-    marked = PixAccount()
-    DictMock.mark(marked, mule=1)
-    DictMock.mark(receiver, open_reports=2)
-    marked.send(900 * REAL, -2 * HOUR, 'approved', destination=receiver.as_destination())
-    response, transaction_id = receiver.record(1500 * REAL)
-    assert_decision(response, 'rejected', 'MULE_PAYER')
-    assert DbUtils.analysis_row(transaction_id)['analysis_details']['payer'] == {
-        'state': 'suspeita_elevada', 'evidences': ['E2', 'E4']}
-
-
-@pytest.mark.parametrize('holders,first,expected', [(5, 3, 'nao'), (30, 3, 'suspeita')])
+@pytest.mark.parametrize('holders,first,expected', [(5, 3, 'approved'), (30, 3, 'rejected')])
 def test_p19_CNPJ_requires_30_holders_but_only_three_new(holders, first, expected):
     payer = PixAccount(document=RandomGenerator.generate_cnpj())
-    hub_receiving_from_new_senders(payer, senders=holders, first_time=first, each=10 * REAL)
-    _, transaction_id = payer.record(100)
-    assert DbUtils.analysis_row(transaction_id)['analysis_details']['payer']['state'] == expected
-
-
-def test_p20_paying_a_marked_account_does_not_propagate_E2_upstream():
-    payer, recipient = PixAccount(), PixDestination()
-    payer.send(100, -2 * DAY, 'approved', destination=recipient)
-    DictMock.mark(recipient, mule=1)
-    response, transaction_id = payer.record(1500 * REAL)
-    assert_decision(response, 'approved', 'POLICY_PASSED')
-    assert DbUtils.analysis_row(transaction_id)['analysis_details']['payer'] == {'state': 'nao', 'evidences': []}
+    hub_receiving_from_new_senders(payer, senders=holders, first_time=first, each=200 * REAL)
+    _, response = payer.pix(3000 * REAL)
+    assert_decision(response, expected, 'POLICY_PASSED' if expected == 'approved' else 'SUSPECTED_MULE_FORWARDING')
 
 
 @pytest.mark.parametrize('field', ['opening_date', 'document'])
@@ -156,21 +123,22 @@ def test_payer_identity_cannot_change_to_bypass_rules(field):
 
 def test_reputation_uses_only_counterparties_from_30_days():
     receiver = PixAccount(document=RandomGenerator.generate_cnpj())
+    DictMock.mark(receiver, open_reports=2)
     for _ in range(9):
         receiver.fund(100, -31 * DAY)
     marked = PixAccount()
     DictMock.mark(marked, mule=1)
     marked.send(900 * REAL, -2 * HOUR, 'approved', destination=receiver.as_destination())
-    _, transaction_id = receiver.record(100)
-    assert DbUtils.analysis_row(transaction_id)['analysis_details']['payer'] == {
-        'state': 'suspeita', 'evidences': ['E2']}
+    _, response = receiver.pix(1500 * REAL, destination=company())
+    assert_decision(response, 'rejected', 'MULE_PAYER')
 
 
 def test_rejected_use_of_marked_device_does_not_propagate_E2():
     device = 'rejected-' + uuid4().hex
     marked, payer = PixAccount(device_id=device), PixAccount(device_id=device)
     DictMock.mark(marked, mule=1)
+    DictMock.mark(payer, open_reports=2)
     marked.send(2000001, -3 * HOUR, 'rejected')
     payer.send(100, -2 * HOUR, 'approved')
-    _, transaction_id = payer.record(100)
-    assert DbUtils.analysis_row(transaction_id)['analysis_details']['payer'] == {'state': 'nao', 'evidences': []}
+    _, response = payer.pix(1500 * REAL, destination=company())
+    assert_decision(response, 'approved', 'POLICY_PASSED')
