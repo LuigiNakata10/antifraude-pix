@@ -4,10 +4,12 @@ from rules import laranja
 from rules.context import PixContext
 from rules.decision import Decision, Status
 from rules.parameters import (
+    ACCOUNT_AVERAGE_MULTIPLIER,
     DAILY_LIMIT,
     DEVICE_WAIT,
     FREQUENCY_THRESHOLD,
     HIGH_AMOUNT,
+    MINIMUM_ACCOUNT_AVERAGE,
     NEW_ACCOUNT_AGE,
     NEW_ACCOUNT_LIMIT,
 )
@@ -19,7 +21,7 @@ def decide(context: PixContext) -> Decision:
 
     Sem banco, sem I/O, sem relógio: o mesmo contexto dá sempre a mesma
     decisão. Devolve o PRIMEIRO resultado aplicável, na ordem
-    R1, R2, L1, L2, L3, R4, R3, ou POLICY_PASSED quando nenhuma condição de
+    R1, R2, L1, L2, L3, R4, R3, R5, ou POLICY_PASSED quando nenhuma condição de
     intervenção foi acionada.
 
     A ordem é uma convenção de explicação: R1 antes de R2 por ser a restrição
@@ -82,6 +84,28 @@ def _first_applicable(context: PixContext, mule: laranja.MuleResult) -> Decision
             "Confirmação adicional: várias solicitações da conta em um intervalo curto.",
             observed_count=projected_attempts,
             limit_count=FREQUENCY_THRESHOLD,
+        )
+
+    # média = soma / quantidade. Multiplicação cruzada evita arredondar
+    # frações de centavo e mantém as duas comparações estritas e exatas.
+    approved_count = history.approved_count_total
+    approved_total = history.approved_amount_total
+    if (
+        approved_count > 0
+        and approved_total > MINIMUM_ACCOUNT_AVERAGE * approved_count
+        and request.amount * approved_count > ACCOUNT_AVERAGE_MULTIPLIER * approved_total
+    ):
+        return Decision(
+            Status.TWO_FACTOR_REQUIRED,
+            ReasonCode.AMOUNT_ABOVE_ACCOUNT_AVERAGE,
+            "Confirmação adicional: o Pix supera dez vezes a média histórica aprovada da conta, que é maior que R$ 500.",
+            observed_amount=request.amount,
+            reason_extra={
+                "historical_total_amount": approved_total,
+                "historical_transaction_count": approved_count,
+                "average_multiplier": ACCOUNT_AVERAGE_MULTIPLIER,
+                "minimum_average_amount": MINIMUM_ACCOUNT_AVERAGE,
+            },
         )
 
     return Decision(

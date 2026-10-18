@@ -8,10 +8,10 @@ class TestPixTransactionConcurrency:
     """A trava por conta pagadora faz cada pedido enxergar os que a antecederam."""
 
     def test_two_simultaneous_pix_do_not_cross_the_daily_limit_together(self):
-        """Sem a trava, os dois leriam acumulado zero e aprovariam R$ 12.000."""
+        """Sem a trava, os dois leriam acumulado zero e aprovariam R$ 24.000."""
         account = PixAccount()
         account.make_device_known()
-        payloads = [account.payload(6000 * 100) for _ in range(2)]
+        payloads = [account.payload(12000 * 100) for _ in range(2)]
 
         results = post_all(payloads)
 

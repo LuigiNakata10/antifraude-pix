@@ -1,7 +1,7 @@
 -- Schema do motor antifraude Pix.
 --
--- Este arquivo é a fonte de verdade do banco e só roda quando o banco nasce:
--- depois de mudar qualquer coisa aqui, `docker compose down -v` e `up`.
+-- Este arquivo é a fonte de verdade para bancos novos. Para atualizar bancos
+-- existentes sem apagar histórico, aplicar os scripts de database/migrations.
 --
 -- Duas regras valem para todas as tabelas:
 --   * HISTÓRICO É APPEND-ONLY. Nada que entrou é atualizado nem apagado: o que
@@ -69,6 +69,7 @@ CREATE TABLE pix_analysis(
         'SUSPECTED_MULE_FORWARDING',
         'NEW_DEVICE_HIGH_AMOUNT',
         'HIGH_FREQUENCY',
+        'AMOUNT_ABOVE_ACCOUNT_AVERAGE',
         'POLICY_PASSED'
     )),
     policy_version                  TEXT NOT NULL,
@@ -84,7 +85,7 @@ CREATE TABLE pix_analysis(
     UNIQUE(analysis_key)
 );
 
--- As janelas de 2 minutos e de 24 horas da conta (R1 a R3).
+-- As janelas de 2 minutos e de 24 horas (R1 a R3) e o histórico da média (R5).
 CREATE INDEX pix_analysis_payer_date_idx
     ON pix_analysis (payer_account_id, transaction_date);
 

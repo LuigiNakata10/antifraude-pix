@@ -5,7 +5,7 @@ from datetime import timedelta
 # pelos bancos. Todos os valores são em centavos. Cada um tem o porquê ao lado.
 
 # Versão dos parâmetros e da ordem das regras: vai em todo `metadata`.
-POLICY_VERSION = "pix-v1.1"
+POLICY_VERSION = "pix-v1.2"
 
 # R1 — conta pagadora nova.
 # Menos de 7 dias completos entre a abertura e o Pix. Com exatamente 7 dias a
@@ -16,10 +16,10 @@ NEW_ACCOUNT_AGE = timedelta(days=7)
 NEW_ACCOUNT_LIMIT = 1000 * 100
 
 # R2 — teto geral.
-# R$ 10.000 em 24 h numa janela móvel: exposição máxima simples e resistente à
+# R$ 20.000 em 24 h numa janela móvel: exposição máxima simples e resistente à
 # fragmentação. Só Pix `approved` consomem o limite.
 DAILY_WINDOW = timedelta(hours=24)
-DAILY_LIMIT = 10000 * 100
+DAILY_LIMIT = 20000 * 100
 
 # R3 — frequência.
 # O terceiro pedido distinto em 2 minutos pede 2FA, com qualquer valor e
@@ -36,6 +36,14 @@ HIGH_AMOUNT = 5000 * 100
 # posteriores não reiniciam a espera: evita que um Pix pequeno aprovado
 # dispense o 2FA de imediato, sem prolongar a espera de quem usa a conta todo dia.
 DEVICE_WAIT = timedelta(hours=24)
+
+# R5 — desvio do valor habitual da conta pagadora.
+# A média usa todos os Pix enviados e aprovados observados até a transação,
+# sem incluir o pedido atual. Só atua se a MÉDIA for maior que R$ 500;
+# nesse caso, um Pix acima de 10 vezes a média pede 2FA, inclusive em aparelho conhecido.
+# Sem aprovações anteriores, não há média. Os dois limites são estritos (>).
+MINIMUM_ACCOUNT_AVERAGE = 500 * 100
+ACCOUNT_AVERAGE_MULTIPLIER = 10
 
 # ---------------------------------------------------------------------------
 # Módulo de conta laranja: o motor primeiro classifica a conta e depois decide

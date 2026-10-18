@@ -31,8 +31,8 @@ class Decision:
     limit_amount: Optional[int] = None
     observed_count: Optional[int] = None
     limit_count: Optional[int] = None
-    # Campos próprios das regras do módulo de conta laranja (conta, estado,
-    # evidências, ato): entram no `reason`, nunca com documento nem identidade.
+    # Campos próprios do motivo: evidências do módulo de laranja ou soma,
+    # quantidade e parâmetros da média (R5). Nunca documento nem identidade.
     reason_extra: dict = field(default_factory=dict)
     # Auditoria interna: estados, evidências, ato e `dict_status`. NUNCA volta na resposta.
     analysis_details: dict = field(default_factory=dict)

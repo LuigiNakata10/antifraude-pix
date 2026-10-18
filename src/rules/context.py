@@ -29,10 +29,10 @@ class PixRequest:
 class AccountHistory:
     """O que a conta pagadora já fez, lido do banco DEPOIS da trava.
 
-    São os indicadores de R1 a R4, em valores prontos: a política nunca roda
+    São os indicadores de R1 a R5, em valores prontos: a política nunca roda
     consulta. As janelas são `(t - janela, t]`, com `t` a `transaction_date`
-    do pedido atual, e nenhum indicador inclui o Pix atual: quem o soma, uma
-    única vez, é a regra.
+    do pedido atual. Nenhum indicador inclui o Pix atual: os tetos o somam
+    uma única vez; a média de R5 usa somente as aprovações anteriores.
     """
 
     # SUM do valor dos Pix `approved` da conta nas últimas 24 h (R1 e R2).
@@ -41,6 +41,10 @@ class AccountHistory:
     attempts_2m: int
     # A primeira aprovação da conta neste aparelho, se houver (R4).
     first_device_approved_at: Optional[datetime]
+    # Soma e quantidade de todos os Pix enviados e aprovados até t (R5).
+    # Não é uma janela de 24 h: a razão entre os dois é a média histórica.
+    approved_amount_total: int
+    approved_count_total: int
 
 
 @dataclass(frozen=True)

@@ -96,12 +96,24 @@ class PixAnalysisRepository:
             .scalar()
         )
 
+        approved_amount_total, approved_count_total = (
+            self.session.query(func.sum(PixAnalysis.amount), func.count(PixAnalysis.id))
+            .filter(
+                PixAnalysis.payer_account_id == payer_account.id,
+                PixAnalysis.status == "approved",
+                PixAnalysis.transaction_date <= t,
+            )
+            .one()
+        )
+
         return PixContext(
             request=request,
             history=AccountHistory(
                 approved_amount_24h=int(approved_amount or 0),
                 attempts_2m=int(attempts),
                 first_device_approved_at=first_device_approval,
+                approved_amount_total=int(approved_amount_total or 0),
+                approved_count_total=int(approved_count_total),
             ),
             payer_dict=payer_dict,
             destination_dict=destination_dict,

@@ -60,18 +60,18 @@ class TestNewAccountLimit:
     def test_c20_new_account_over_both_limits_reports_only_r1(self):
         account = PixAccount(age=3 * DAY)
 
-        _, response = account.pix(11000 * REAL)
+        _, response = account.pix(21000 * REAL)
 
         assert_decision(response, "rejected", "NEW_ACCOUNT_LIMIT_EXCEEDED")
 
 
 class TestDailyLimit:
-    """R2: nenhuma conta passa de R$ 10.000 aprovados em 24 h, contando o Pix atual."""
+    """R2: nenhuma conta passa de R$ 20.000 aprovados em 24 h, contando o Pix atual."""
 
     def test_c05_exactly_the_limit_is_approved(self):
         account = PixAccount()
         account.make_device_known()
-        account.send(7000 * REAL, -2 * HOUR, "approved")
+        account.send(17000 * REAL, -2 * HOUR, "approved")
 
         _, response = account.pix(3000 * REAL)
 
@@ -80,19 +80,19 @@ class TestDailyLimit:
     def test_c06_one_real_above_the_limit_is_rejected(self):
         account = PixAccount()
         account.make_device_known()
-        account.send(7000 * REAL, -2 * HOUR, "approved")
+        account.send(17000 * REAL, -2 * HOUR, "approved")
 
         _, response = account.pix(3001 * REAL)
 
         reason = assert_decision(response, "rejected", "DAILY_LIMIT_EXCEEDED")
-        assert reason["observed_amount"] == 10001 * REAL
-        assert reason["limit_amount"] == 10000 * REAL
+        assert reason["observed_amount"] == 20001 * REAL
+        assert reason["limit_amount"] == 20000 * REAL
 
     def test_approval_exactly_24_hours_ago_is_out_of_the_window(self):
         """A janela é (t - 24h, t]: o aprovado em t - 24h exatos não conta."""
         account = PixAccount()
         account.make_device_known(hours_ago=50)
-        account.send(9000 * REAL, -24 * HOUR, "approved")
+        account.send(19000 * REAL, -24 * HOUR, "approved")
 
         _, response = account.pix(1500 * REAL)
 
@@ -101,7 +101,7 @@ class TestDailyLimit:
     def test_approval_one_second_inside_the_window_counts(self):
         account = PixAccount()
         account.make_device_known(hours_ago=50)
-        account.send(9000 * REAL, -24 * HOUR + SECOND, "approved")
+        account.send(19000 * REAL, -24 * HOUR + SECOND, "approved")
 
         _, response = account.pix(1500 * REAL)
 
@@ -110,7 +110,7 @@ class TestDailyLimit:
     def test_rejected_pix_does_not_consume_the_limit(self):
         account = PixAccount()
         account.make_device_known()
-        account.send(9000 * REAL, -20 * MINUTE, "approved")
+        account.send(19000 * REAL, -20 * MINUTE, "approved")
         account.send(2000 * REAL, -15 * MINUTE, "rejected")
 
         _, response = account.pix(1000 * REAL)
@@ -118,11 +118,11 @@ class TestDailyLimit:
         assert_decision(response, "approved", "POLICY_PASSED")
 
     def test_two_factor_pix_does_not_consume_the_limit(self):
-        """Um Pix que pediu 2FA não foi aprovado: R$ 6.000 + R$ 9.000 não somam R$ 15.000."""
+        """Um Pix que pediu 2FA não foi aprovado: R$ 6.000 + R$ 19.000 não somam R$ 25.000."""
         account = PixAccount()
         account.send(6000 * REAL, -3 * HOUR, "two_factor_required")
 
-        _, response = account.pix(9000 * REAL)
+        _, response = account.pix(19000 * REAL)
 
         assert_decision(response, "two_factor_required", "NEW_DEVICE_HIGH_AMOUNT")
 
@@ -145,7 +145,7 @@ class TestFrequency:
     def test_c08_rejected_attempts_also_count(self):
         account = PixAccount()
         account.make_device_known()
-        account.send(9000 * REAL, -100 * SECOND, "approved")
+        account.send(19000 * REAL, -100 * SECOND, "approved")
         account.send(2000 * REAL, -50 * SECOND, "rejected")
 
         _, response = account.pix(1 * REAL)
@@ -277,7 +277,7 @@ class TestNewDeviceHighAmount:
 
 
 class TestRulePrecedence:
-    """Ordem R1, R2, R4, R3: rejeição antes de 2FA, e um único motivo."""
+    """Ordem base R1, R2, R4, R3, R5: rejeição antes de 2FA, e um único motivo."""
 
     def test_c16_new_account_limit_prevails_over_new_device(self):
         account = PixAccount(age=3 * DAY)
@@ -289,8 +289,8 @@ class TestRulePrecedence:
     def test_c17_daily_limit_prevails_over_frequency(self):
         account = PixAccount()
         account.make_device_known()
-        account.send(4500 * REAL, -100 * SECOND, "approved")
-        account.send(4500 * REAL, -50 * SECOND, "approved")
+        account.send(9500 * REAL, -100 * SECOND, "approved")
+        account.send(9500 * REAL, -50 * SECOND, "approved")
 
         _, response = account.pix(1500 * REAL)
 

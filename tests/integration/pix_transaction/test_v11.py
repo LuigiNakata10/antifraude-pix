@@ -170,7 +170,7 @@ def test_rejected_use_of_marked_device_does_not_propagate_E2():
     device = 'rejected-' + uuid4().hex
     marked, payer = PixAccount(device_id=device), PixAccount(device_id=device)
     DictMock.mark(marked, mule=1)
-    marked.send(1000001, -3 * HOUR, 'rejected')
+    marked.send(2000001, -3 * HOUR, 'rejected')
     payer.send(100, -2 * HOUR, 'approved')
     _, transaction_id = payer.record(100)
     assert DbUtils.analysis_row(transaction_id)['analysis_details']['payer'] == {'state': 'nao', 'evidences': []}
