@@ -1,4 +1,4 @@
-# Motor Antifraude Pix
+# Grupo 2
 
 **Integrantes:** Renan Correia e Luigi Nakata
 
