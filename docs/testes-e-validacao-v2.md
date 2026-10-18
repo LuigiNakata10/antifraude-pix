@@ -36,6 +36,7 @@ O que nunca volta na resposta só pode ser conferido no banco. Essas leituras s�
 | Ler `analysis_details` e as colunas do DICT de uma análise | Conferir o registro de auditoria (estado, evidências, situação do DICT) |
 | Controlar o `fetched_at` de uma resposta do DICT em `dict_lookup` | Testar a expiração de 5 minutos do cache sem esperar 5 minutos; só respostas externas fictícias, nunca aprovações financeiras |
 | Instalar um gatilho que faz falhar a gravação em `account_link` | Provar que uma falha depois do INSERT da análise desfaz tudo, não responde sucesso e permite nova tentativa |
+| Segurar, numa conexão direta, a trava da linha de `payer_account` por mais de 5 s | Provar o 503 `QIT003005` com `Retry-After`, sem gravar nada, e que repetir o pedido depois funciona. O teste leva cerca de 5 s |
 
 ## O que cada arquivo cobre
 

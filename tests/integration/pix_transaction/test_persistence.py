@@ -2,9 +2,11 @@ from datetime import timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 from tests.utils import DbUtils, PixAccount, RequestGenerator
+from tests.utils.requisition import ClientRequisition
+from tests.utils.request_generator import INTERNAL_TOKEN
 
 
 class TestPixTransactionPersistence:
@@ -68,6 +70,42 @@ class TestPixTransactionWriteFailure:
 
         assert status == 500
         assert response["code"] == "QIT000500"
+        assert get_status == 404
+        status, retried = RequestGenerator.POST_pix_transaction(payload)
+        assert status == 201
+        assert retried["status"] == "approved"
+
+
+class TestPixTransactionLockTimeout:
+    """A conta presa por outro pedido além de 5 s devolve 503 e não grava nada.
+
+    Exceção consciente ao black box: o teste conecta direto ao Postgres só para
+    SEGURAR a trava da conta pagadora, como faria outra requisição lenta.
+    """
+
+    def test_a_busy_account_answers_503_and_the_retry_succeeds(self):
+        account = PixAccount()
+        account.send(100 * 100, -timedelta(minutes=10), "approved")
+        payload = account.payload(100 * 100)
+        engine = create_engine(DbUtils.database_url())
+
+        with engine.connect() as connection:
+            connection.execute(
+                text("SELECT id FROM payer_account WHERE branch = :branch AND account_number = :number FOR UPDATE"),
+                {"branch": account.branch, "number": account.account_number},
+            )
+            try:
+                response = ClientRequisition.send(
+                    "POST", "/pix/transaction", payload=payload, headers={"INTERNAL-TOKEN": INTERNAL_TOKEN}
+                )
+                get_status, _ = RequestGenerator.GET_pix_transaction(payload["id"])
+            finally:
+                connection.rollback()
+        engine.dispose()
+
+        assert response.response_status == 503
+        assert response.response_json["code"] == "QIT003005"
+        assert response.response.headers["Retry-After"] == "1"
         assert get_status == 404
         status, retried = RequestGenerator.POST_pix_transaction(payload)
         assert status == 201
