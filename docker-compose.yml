@@ -109,6 +109,9 @@ services:
       DATABASE_URL: postgresql+psycopg2://bootcamp:bootcamp@db:5432/bootcamp
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-default_token}
       INSTITUTION_ISPB: ${INSTITUTION_ISPB:-99999999}
+      # O usuario do host (--user) nao tem HOME no conteiner; sem isto o matplotlib
+      # reclama do diretorio de cache ao desenhar o grafo.
+      MPLCONFIGDIR: /tmp/matplotlib
     depends_on:
       api:
         condition: service_healthy

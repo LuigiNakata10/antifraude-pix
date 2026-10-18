@@ -30,9 +30,11 @@ docker compose --profile test run --build --rm tests                   # a suít
 docker compose --profile test run --rm --no-deps tests \
   pytest tests/integration/pix_transaction/test_policy.py::TestDailyLimit   # um teste
 docker compose --profile test run --rm --no-deps tests python -m flake8 .   # lint
-docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/seed_demo.py
-docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/graph_demo.py
-docker compose --profile test run --rm --no-deps -v ./docs:/app/docs:ro -v ./output/pdf:/app/output/pdf tests \
+mkdir -p output/demo output/pdf                                       # antes: sem isto o Docker cria as pastas como root
+U="--user $(id -u):$(id -g)"                                           # e isto faz os arquivos gerados ficarem seus
+docker compose --profile test run --rm --no-deps $U -v ./output/demo:/app/output/demo tests python scripts/seed_demo.py
+docker compose --profile test run --rm --no-deps $U -v ./output/demo:/app/output/demo tests python scripts/graph_demo.py
+docker compose --profile test run --rm --no-deps $U -v ./docs:/app/docs:ro -v ./output/pdf:/app/output/pdf tests \
   python scripts/gerar_pdf_arquitetura.py                              # regera o PDF da arquitetura
 docker compose down -v                                                 # obrigatório ao mudar database/database.sql
 ```
@@ -40,7 +42,7 @@ docker compose down -v                                                 # obrigat
 - A imagem `tests` copia `src/` para a raiz de `/app`: dentro dela não existe a pasta `src`, por isso o lint é `flake8 .`.
 - **O compose não publica o Postgres nem o mock no host** (uma porta ocupada, como um Postgres local na 5432, derrubava o `up` inteiro). Para rodar o `pytest` do host (Python 3.11+, `pip install -r requirements-dev.txt`), suba com `docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up --build -d --wait`; se 5432 ou 1080 estiverem ocupadas, ponha `DB_PORT`/`MOCKSERVER_PORT` num `.env` (fora do Git) e a mesma porta na `DATABASE_URL`.
 - Banco criado antes da v1.2 não aceita o motivo da R5: aplique `database/migrations/001_account_average_reason.sql` (comando no README) ou recrie com `down -v`.
-- Arquivos gerados pelo container (PDF, imagens em `output/`) ficam com dono `root`.
+- Os comandos dos scripts usam `mkdir -p` e `--user`: sem eles, os arquivos de `output/` ficam com dono `root`.
 
 ## Arquitetura
 

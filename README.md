@@ -82,9 +82,12 @@ A suíte teve **262 testes aprovados**, cobrindo contrato, decisões e fricção
 Para executar a demo e gerar o grafo:
 
 ```bash
-docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/seed_demo.py
-docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/graph_demo.py
+mkdir -p output/demo
+docker compose --profile test run --rm --no-deps --user "$(id -u):$(id -g)" -v ./output/demo:/app/output/demo tests python scripts/seed_demo.py
+docker compose --profile test run --rm --no-deps --user "$(id -u):$(id -g)" -v ./output/demo:/app/output/demo tests python scripts/graph_demo.py
 ```
+
+O `mkdir` e o `--user` fazem os arquivos gerados ficarem com o seu usuário (sem eles o Docker cria a pasta e os arquivos como `root`).
 
 A demo verifica sete decisões com dados fictícios e desenha o grafo em `output/demo/grafo-demo-v2.png`:
 
