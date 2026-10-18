@@ -22,6 +22,7 @@ load_dotenv(ROOT / ".env")
 from tests.utils import DictMock, PixAccount, PixDestination, RandomGenerator  # noqa: E402
 from tests.utils.dict_mock import statistics  # noqa: E402
 from tests.utils.pix_account import at  # noqa: E402
+from tests.utils.warm_up import warm_up_dict_mock  # noqa: E402
 from tests.utils.mule_scenarios import hub_receiving_from_new_senders  # noqa: E402
 
 REAL = 100
@@ -62,6 +63,13 @@ def title(text: str) -> None:
 
 def main() -> int:
     print("Demo do motor antifraude Pix: primeiro a conta, depois o ato.")
+    try:
+        # O Mockserver recém-iniciado responde devagar: sem isto, o primeiro passo
+        # da demo ao vivo pode ver "DICT indisponível" e errar.
+        warm_up_dict_mock()
+    except RuntimeError as error:
+        print(error)
+        return 1
 
     # ------------------------------------------------------------------ 1
     title("1. Uma conta marcada no DICT: a vítima nova é barrada, a mãe de sempre não")
