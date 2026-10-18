@@ -10,6 +10,7 @@ from tests.utils.mule_scenarios import hub_receiving_from_new_senders
 REAL = 100
 HOUR = timedelta(hours=1)
 DAY = timedelta(days=1)
+SECOND = timedelta(seconds=1)
 
 
 def company():
@@ -78,6 +79,18 @@ class TestGraphDecisions:
 
         assert_reviewed_payment(old, "approved")
         assert_reviewed_payment(recent, "rejected")
+
+    @pytest.mark.parametrize(
+        "offset,expected",
+        [(-30 * DAY, "approved"), (-30 * DAY + SECOND, "rejected")],
+        ids=["exactly-30-days-is-out", "one-second-inside-the-window"],
+    )
+    def test_the_30_day_window_of_e2_is_open_at_its_start(self, offset, expected):
+        """A janela é (t - 30 dias, t]: o dinheiro marcado em t - 30 dias exatos já não conta."""
+        receiver = reported_company()
+        marked_account_pays(receiver, 900 * REAL, offset)
+
+        assert_reviewed_payment(receiver, expected)
 
     def test_suspicion_does_not_spread_to_a_second_hop(self):
         first_hop, second_hop = reported_company(), reported_company()
