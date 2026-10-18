@@ -10,15 +10,15 @@ A resposta contém `key`, `status` e `metadata`, com um único motivo. Os result
 
 ## Regras
 
-Política atual: **`pix-v1.3`**, na branch **`v3`**. Os valores chegam em centavos. As janelas usam `transaction_date` e o intervalo `(t − janela, t]`. Os parâmetros são escolhas iniciais do protótipo, sem calibração em dados reais.
+Política atual: **`pix-v1.3`**. Os valores chegam em centavos. As janelas usam `transaction_date` e o intervalo `(t − janela, t]`. Os parâmetros são hipóteses iniciais do protótipo, sem calibração em dados reais; as justificativas abaixo explicam os compromissos escolhidos, não demonstram que esses números sejam ótimos.
 
 | Regra | Lógica | Parâmetros | Por quê |
 | --- | --- | --- | --- |
-| R1 — conta nova | Rejeitar quando o acumulado aprovado + Pix atual ultrapassar o teto inicial | Conta com menos de 7 dias; R$ 1.000 em 24h | Conter a exposição na primeira semana e impedir contorno por fracionamento |
-| R2 — teto geral | Rejeitar quando o acumulado aprovado + atual ultrapassar o teto geral | R$ 20.000 em 24h | Limitar a exposição e permitir que R5 solicite 2FA antes do teto, sem depender de renda ou saldo ausentes do contrato |
-| R3 — frequência | Pedir 2FA na terceira tentativa distinta ou posterior | 3 solicitações em 2 minutos | Tolerar duas operações próximas e exigir confirmação em uma rajada |
-| R4 — aparelho e valor | Pedir 2FA em valor alto sem aparelho familiar | Pix ≥ R$ 5.000; familiaridade após 24h da primeira aprovação naquele aparelho e conta | Combinar exposição relevante e falta de histórico; uma aprovação pequena não libera valores altos imediatamente |
-| R5 — desvio da média | Pedir 2FA quando o Pix superar 10 vezes a referência da conta | Referência = **maior entre média aprovada e R$ 500**; exige aprovação anterior; comparação estrita | Identificar desvio em aparelho conhecido, sem desativar a regra quando pagamentos pequenos reduzem a média |
+| R1 — conta nova | Rejeitar quando o acumulado aprovado + Pix atual ultrapassar o teto inicial | Conta com menos de 7 dias; R$ 1.000 em 24h | Uma semana define uma cautela inicial curta; R$ 1.000 permite pagamentos pequenos com exposição limitada. O acumulado móvel de 24h impede fracionamento e renovação do teto à meia-noite |
+| R2 — teto geral | Rejeitar quando o acumulado aprovado + atual ultrapassar o teto geral | R$ 20.000 em 24h | R$ 20.000 oferece mais margem que o teto inicial e o limiar de aparelho novo, mantendo uma exposição máxima fixa. A janela móvel impede renovação à meia-noite; aceita-se barrar pagamentos legítimos acima desse valor |
+| R3 — frequência | Pedir 2FA na terceira tentativa distinta ou posterior | 3 solicitações em 2 minutos | Duas operações próximas são toleradas; a terceira em apenas 2 minutos caracteriza a rajada escolhida para confirmação, sem rejeitar por quantidade. Aceita-se 2FA em rateios legítimos |
+| R4 — aparelho e valor | Pedir 2FA em valor alto sem aparelho familiar | Pix ≥ R$ 5.000; familiaridade após 24h da primeira aprovação naquele aparelho e conta | R$ 5.000 concentra a fricção em exposição maior, preservando pagamentos menores. A espera de um dia impede liberação imediata por um Pix pequeno; aprovações seguintes não reiniciam a espera |
+| R5 — desvio da média | Pedir 2FA quando o Pix superar 10 vezes a referência da conta | Referência = **maior entre média aprovada e R$ 500**; exige aprovação anterior; comparação estrita | O multiplicador 10 tolera variações menores e destaca saltos de uma ordem de grandeza. O piso de R$ 500 impede limiares inferiores a R$ 5.000 e evita desligar a proteção quando a média cai; sem aprovação não há referência observada |
 | L1 — destino | Rejeitar destino em suspeita elevada sem relacionamento anterior às evidências | Classificação abaixo; aprovação prévia para o mesmo titular antes do início conhecido da evidência | Proteger novos pagadores, mantendo uma exceção limitada para relacionamentos anteriores |
 | L2 — pagador | Rejeitar pagador em suspeita elevada quando o ato não for gasto típico | Inclui repasse aparente e outros atos | Restringir saídas de maior risco, preservando pagamentos cotidianos limitados |
 | L3 — repasse | Rejeitar conta suspeita que realiza repasse aparente | Classificação e ato definidos abaixo | Combinar sinais da conta e movimentação, sem recusar todo pagamento da conta suspeita |
@@ -31,18 +31,18 @@ R5 calcula a média de **todos os Pix enviados e aprovados observados até `tran
 
 | Evidência | Lógica | Parâmetros | Por quê |
 | --- | --- | --- | --- |
-| E1 | Marcação de laranja/golpista ou relatos de instituições distintas no mock | Janela de 90 dias; ≥ 1 marcação ou ≥ 2 instituições | Usar sinais externos sem tratar relato único como confirmação; fontes podem refletir o mesmo fato |
-| E2 | Maioria do recebido vem de contas E1, ou há aparelho compartilhado com conta E1 | Mais de 50% em 30 dias; usos anteriores aprovados das duas contas no aparelho; conta com menos de 90 dias **ou** menos de 10 contrapartes em 30 dias | Proporção e reputação reduzem associações por recebimentos ocasionais; só E1 propaga, por um salto |
-| E3 | Concentração de titulares remetentes com estreantes | Em 1h: ≥ 5 titulares para PF ou ≥ 30 para CNPJ; ≥ 3 estreantes | Buscar concentração recente, com maior tolerância para recebimentos comerciais |
-| E4 | Relatos de infração ainda abertos no mock | ≥ 2 relatos | Dar peso à recorrência, combinada com vínculo local |
-| E5 | Conta recente recebe volume de vários titulares | Menos de 7 dias; mais de R$ 5.000 em 24h; ≥ 3 titulares | Combinar novidade, volume e diversidade; o valor equivale a cinco vezes o teto inicial de saída |
+| E1 | Marcação de laranja/golpista ou relatos de instituições distintas no mock | Janela de 90 dias; ≥ 1 marcação ou ≥ 2 instituições | Usa o agregado trimestral `d90` do mock para não carregar sinais indefinidamente. Uma marcação explícita basta; relatos exigem duas instituições para não equiparar relato único a marcação, embora fontes possam refletir o mesmo fato |
+| E2 | Maioria do recebido vem de contas E1, ou há aparelho compartilhado com conta E1 | Mais de 50% em 30 dias; usos anteriores aprovados das duas contas no aparelho; conta com menos de 90 dias **ou** menos de 10 contrapartes em 30 dias | Mais de metade indica predominância, não recebimento ocasional; 30 dias limitam o vínculo financeiro a um mês recente. A exceção exige 90 dias de conta e 10 contrapartes no mês, combinando maturidade e diversidade; só E1 propaga, por um salto |
+| E3 | Concentração de titulares remetentes com estreantes | Em 1h: ≥ 5 titulares para PF ou ≥ 30 para CNPJ; ≥ 3 estreantes | Uma hora busca concentração recente. Cinco titulares sinalizam um grupo além de uma troca bilateral; 30 dão margem maior à atividade comercial. Três estreantes exigem renovação dos remetentes; rateios ainda podem gerar suspeita, que só rejeita no repasse |
+| E4 | Relatos de infração ainda abertos no mock | ≥ 2 relatos | Dois relatos exigem recorrência em vez de reagir a uma disputa isolada. Não são confirmação: E4 só eleva o estado quando combinada com E2 |
+| E5 | Conta recente recebe volume de vários titulares | Menos de 7 dias; mais de R$ 5.000 em 24h; ≥ 3 titulares | Reutiliza a primeira semana e o dia móvel de R1. R$ 5.000 equivale a cinco vezes o teto inicial de saída; três titulares distinguem diversidade de um único aporte. A combinação indica suspeita, sem provar fraude |
 
 E2 conta contrapartes por conta; E3/E5 contam titulares. **Suspeita elevada:** E1 ou E2+E4. **Suspeita:** outras combinações positivas, inclusive E3+E5. **`nao`:** nenhuma evidência positiva disponível. E3+E5 não eleva o estado porque pode representar a mesma arrecadação legítima. Informação indisponível permanece desconhecida.
 
 ### Tipo de pagamento
 
-1. **Repasse aparente:** recebeu pelo menos R$ 1.000 aprovados em 1h e as saídas aprovadas + atual atingem 50% ou mais desse valor, para PF ou CNPJ cuja conta tem menos de 90 dias. O mínimo evita inferir repasse de entradas pequenas; a proporção busca saída de parcela relevante.
-2. **Gasto típico:** fora do repasse, até R$ 1.000 para titular já conhecido por aprovação anterior ou CNPJ com conta de pelo menos 90 dias. É uma exceção limitada; idade não comprova legitimidade.
+1. **Repasse aparente:** recebeu pelo menos R$ 1.000 aprovados em 1h e as saídas aprovadas + atual atingem 50% ou mais desse valor, para PF ou CNPJ cuja conta tem menos de 90 dias. R$ 1.000 evita inferir repasse de entradas pequenas; metade representa saída relevante e uma hora busca proximidade entre entrada e saída. Os 90 dias reutilizam o critério de maturidade de E2; aceita-se não detectar por este ato repasses a CNPJ antigo.
+2. **Gasto típico:** fora do repasse, até R$ 1.000 para titular já conhecido por aprovação anterior ou CNPJ com conta de pelo menos 90 dias. Reutiliza o teto inicial para limitar a exposição da exceção e os 90 dias para afastar contas comerciais recém-abertas. Uma aprovação anterior fornece um vínculo mínimo observado; nem familiaridade nem idade comprovam legitimidade.
 3. **Outro:** demais casos. L2 também os rejeita, aceitando essa fricção como custo do protótipo.
 
 Repasse prevalece mesmo para destinatário conhecido. Relacionamento anterior exige início explícito da evidência; se desconhecido, inclusive em E2+E4, a exceção não é presumida.
@@ -54,6 +54,8 @@ Repasse prevalece mesmo para destinatário conhecido. Relacionamento anterior ex
 Rejeições precedem 2FA. O módulo de laranja não pede segundo fator: o próprio operador pode confirmá-lo. `two_factor_required` não consome limite nem cria familiaridade; a conclusão do 2FA fica fora desta API.
 
 O DICT é um **mock**: consultas em paralelo, prazo de 200 ms, antes da trava. O pagador usa cache de **5 minutos desde a consulta**, sem renovar na leitura; a primeira análise após expirar consulta novamente. O destino continua ao vivo, com reserva de cache de 1h. Falha sem cache válido deixa E1/E4 desconhecidas e a política continua com os sinais disponíveis.
+
+Os 200 ms limitam a espera externa sem manter a trava ocupada. Cinco minutos reduzem consultas repetidas do pagador, aceitando esse atraso para descobrir uma marcação nova; o prazo não se estende com o uso. A reserva de uma hora do destino tolera uma indisponibilidade breve sem manter dados antigos indefinidamente, mas só é usada após falha da consulta ao vivo. São compromissos do protótipo, não garantias de atualização.
 
 O histórico cobre apenas análises observadas, não liquidação. Cache pode atrasar marcações; autenticação válida, relação anterior ou CNPJ antigo não garantem pagamento legítimo. Sem liquidação, cadastro ou fonte externa real, esta versão é um protótipo de decisão.
 
