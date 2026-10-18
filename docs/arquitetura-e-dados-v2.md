@@ -361,6 +361,6 @@ docker compose --profile test run --build --rm tests
 docker compose --profile test run --rm --no-deps tests python -m flake8 .
 ```
 
-Não é preciso Python no host nem `.env`. A API atende na porta 3000, com `INTERNAL-TOKEN: default_token`. O compose também publica o Postgres (5432) e o mock (1080) no host; se essas portas estiverem ocupadas, troque `DB_PORT` e `MOCKSERVER_PORT` num `.env`, como em `.env.example`. Bancos criados antes da v1.2 precisam da migração `database/migrations/001_account_average_reason.sql`, descrita no README.
+Não é preciso Python no host nem `.env`. A API atende na porta 3000, com `INTERNAL-TOKEN: default_token`. O Postgres e o mock ficam só na rede do compose e não publicam portas no host, para que um Postgres local não impeça o projeto de subir. Quem quiser rodar o `pytest` do host publica as duas portas com `docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up --build -d --wait`. Bancos criados antes da v1.2 precisam da migração `database/migrations/001_account_average_reason.sql`, descrita no README.
 
 Este documento descreve o recorte implementado do protótipo. Ele não comprova eficácia contra fraude real: os testes verificam que o código segue as regras descritas.

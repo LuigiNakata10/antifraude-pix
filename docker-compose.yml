@@ -2,10 +2,12 @@
 #
 #     docker compose up
 #
-# Os testes rodam na sua maquina, contra a API que subiu aqui:
+# Os testes rodam dentro do compose, sem Python na sua maquina:
 #
-#     pip install -r requirements-dev.txt
-#     pytest
+#     docker compose --profile test run --build --rm tests
+#
+# Para rodar o pytest do HOST (pip install -r requirements-dev.txt e pytest),
+# publique o banco e o mock com o docker-compose.host-ports.yml.
 #
 # Nao precisa criar arquivo nenhum antes: cada configuracao abaixo tem um
 # valor padrao, escrito no proprio ${VARIAVEL:-padrao}. Le-se assim:
@@ -72,9 +74,10 @@ services:
       POSTGRES_USER: bootcamp
       POSTGRES_PASSWORD: bootcamp
       POSTGRES_DB: bootcamp
-    ports:
-      # Mesma ideia: DB_PORT=5433 no .env se a 5432 estiver ocupada.
-      - "${DB_PORT:-5432}:5432"
+    # Sem "ports": o banco so e acessado de dentro da rede do compose (a API e os
+    # testes enxergam "db:5432"). Publicar a 5432 no host fazia o "docker compose
+    # up" inteiro falhar em quem ja tem outro Postgres. Para acessa-lo do host,
+    # use o docker-compose.host-ports.yml.
     healthcheck:
       # A API so sobe depois que o banco responder de verdade.
       test: ["CMD-SHELL", "pg_isready -U bootcamp -d bootcamp"]
@@ -91,8 +94,7 @@ services:
       MOCKSERVER_INITIALIZATION_JSON_PATH: /config/dict_expectations.json
     volumes:
       - ./mocks:/config:ro
-    ports:
-      - "${MOCKSERVER_PORT:-1080}:1080"
+    # Sem "ports", pelo mesmo motivo do banco: veja docker-compose.host-ports.yml.
 
   tests:
     profiles: [test]

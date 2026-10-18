@@ -38,7 +38,7 @@ docker compose down -v                                                 # obrigat
 ```
 
 - A imagem `tests` copia `src/` para a raiz de `/app`: dentro dela não existe a pasta `src`, por isso o lint é `flake8 .`.
-- Com Python 3.11+ no host: `pip install -r requirements-dev.txt` e `pytest`, contra a API de pé. Se 5432 ou 1080 estiverem ocupadas, ponha `DB_PORT`/`MOCKSERVER_PORT` num `.env` (fora do Git) e a mesma porta na `DATABASE_URL`.
+- **O compose não publica o Postgres nem o mock no host** (uma porta ocupada, como um Postgres local na 5432, derrubava o `up` inteiro). Para rodar o `pytest` do host (Python 3.11+, `pip install -r requirements-dev.txt`), suba com `docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up --build -d --wait`; se 5432 ou 1080 estiverem ocupadas, ponha `DB_PORT`/`MOCKSERVER_PORT` num `.env` (fora do Git) e a mesma porta na `DATABASE_URL`.
 - Banco criado antes da v1.2 não aceita o motivo da R5: aplique `database/migrations/001_account_average_reason.sql` (comando no README) ou recrie com `down -v`.
 - Arquivos gerados pelo container (PDF, imagens em `output/`) ficam com dono `root`.
 

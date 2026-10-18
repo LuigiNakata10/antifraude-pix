@@ -67,7 +67,7 @@ docker compose --profile test run --build --rm tests
 docker compose --profile test run --rm --no-deps tests python -m flake8 .
 ```
 
-Não é necessário Python no host nem criar `.env`. A API atende em `http://localhost:3000`; as rotas Pix exigem `INTERNAL-TOKEN: default_token`. Para trocar portas ou token, use [.env.example](.env.example). O formato do pedido está no [schema](src/schemas/post_pix_transaction.json).
+Não é necessário Python no host nem criar `.env`. A API atende em `http://localhost:3000`; as rotas Pix exigem `INTERNAL-TOKEN: default_token`. O banco e o DICT simulado ficam só dentro da rede do compose, sem publicar portas no host, então um Postgres local na 5432 não atrapalha. Se a 3000 estiver ocupada, ponha `API_PORT=3001` num `.env` (modelo em [.env.example](.env.example)). O formato do pedido está no [schema](src/schemas/post_pix_transaction.json).
 
 **Banco de uma versão anterior:** antes de usar a nova política, reconstrua o serviço `db` e aplique a [migração](database/migrations/001_account_average_reason.sql). Ela libera o novo motivo sem apagar nem reavaliar análises antigas:
 
@@ -77,7 +77,7 @@ docker compose exec -T db psql -U bootcamp -d bootcamp -v ON_ERROR_STOP=1 -f /mi
 docker compose up --build -d --wait
 ```
 
-A suíte revisada teve **254 testes aprovados**, cobrindo contrato, decisões e fricção das regras, média histórica, cenários de laranja, idempotência, concorrência e recuperação de falhas. O documento de [testes e validação](docs/testes-e-validacao-v2.md) mostra o que cada arquivo cobre e o que a suíte não prova. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; datas não suportadas, identidade ou ordem incoerente e Pix para a mesma conta retornam 422. Contas distintas do mesmo titular continuam permitidas. Falha técnica retorna erro, sem virar decisão antifraude.
+A suíte teve **262 testes aprovados**, cobrindo contrato, decisões e fricção das regras, média histórica, cenários de laranja, idempotência, concorrência e recuperação de falhas. O documento de [testes e validação](docs/testes-e-validacao-v2.md) mostra o que cada arquivo cobre e o que a suíte não prova. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; datas não suportadas, identidade ou ordem incoerente e Pix para a mesma conta retornam 422. Contas distintas do mesmo titular continuam permitidas. Falha técnica retorna erro, sem virar decisão antifraude.
 
 Para executar a demo e gerar o grafo:
 
