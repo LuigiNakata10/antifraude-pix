@@ -1,0 +1,19 @@
+# Publica o banco e o DICT simulado no host, para rodar o pytest FORA do Docker.
+#
+# O compose padrao nao publica essas portas: a API e os testes do perfil "test"
+# conversam por dentro da rede, e uma porta ocupada (um Postgres local na 5432,
+# por exemplo) nao deve impedir o projeto de subir.
+#
+#     docker compose -f docker-compose.yml -f docker-compose.host-ports.yml up --build -d --wait
+#
+# Se alguma porta estiver ocupada, troque DB_PORT e MOCKSERVER_PORT num .env
+# (veja .env.example) e ponha a mesma porta do banco na DATABASE_URL.
+
+services:
+  db:
+    ports:
+      - "${DB_PORT:-5432}:5432"
+
+  mockserver:
+    ports:
+      - "${MOCKSERVER_PORT:-1080}:1080"

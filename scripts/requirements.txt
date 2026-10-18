@@ -1,0 +1,7 @@
+# Dependencias SO dos scripts (seed_demo.py, graph_demo.py e gerar_pdf_arquitetura.py).
+# Ficam fora do requirements-dev.txt e da imagem da API: a API nao desenha grafo nem PDF.
+-r ../requirements-dev.txt
+
+networkx==3.4.2
+matplotlib==3.11.2
+reportlab==5.0.1
