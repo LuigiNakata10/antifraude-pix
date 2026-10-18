@@ -77,7 +77,7 @@ docker compose exec -T db psql -U bootcamp -d bootcamp -v ON_ERROR_STOP=1 -f /mi
 docker compose up --build -d --wait
 ```
 
-A suíte revisada teve **254 testes aprovados**, cobrindo contrato, decisões e fricção das regras, média histórica, cenários de laranja, idempotência, concorrência e recuperação de falhas. A [revisão dos testes](docs/revisao-dos-testes-v3.md) justifica as remoções e os cenários reformulados. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; datas não suportadas, identidade ou ordem incoerente e Pix para a mesma conta retornam 422. Contas distintas do mesmo titular continuam permitidas. Falha técnica retorna erro, sem virar decisão antifraude.
+A suíte revisada teve **254 testes aprovados**, cobrindo contrato, decisões e fricção das regras, média histórica, cenários de laranja, idempotência, concorrência e recuperação de falhas. O documento de [testes e validação](docs/testes-e-validacao-v2.md) mostra o que cada arquivo cobre e o que a suíte não prova. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; datas não suportadas, identidade ou ordem incoerente e Pix para a mesma conta retornam 422. Contas distintas do mesmo titular continuam permitidas. Falha técnica retorna erro, sem virar decisão antifraude.
 
 Para executar a demo e gerar o grafo:
 
@@ -86,4 +86,16 @@ docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/de
 docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/graph_demo.py
 ```
 
-A demo verifica sete decisões com dados fictícios. A [revisão v1.3](docs/revisao-e-justificativas-v1.3.md) explica as correções, os custos de fricção e a exceção mantida para CNPJ antigo. A [v1.2](docs/regra-desvio-de-valor-v1.2.md), a [nota de integração](docs/integracao-motor-v1.1.md) e o [guia v1.1](docs/guia-de-desenvolvimento-v1.1.md) preservam as decisões anteriores.
+A demo verifica sete decisões com dados fictícios e desenha o grafo em `output/demo/grafo-demo-v2.png`:
+
+![Grafo de contas da demo: a vítima nova é barrada e a mãe passa; a laranja paga a luz mas não repassa; a conta no mesmo aparelho da laranja é barrada; a padaria de boa-fé segue normal; com o DICT lento, o motor decide sem ele](docs/img/grafo-demo-v2.png)
+
+## Documentação
+
+| Documento | O que contém |
+| --- | --- |
+| [Política antifraude](docs/politica-antifraude-v2.md) | Todas as regras da `pix-v1.3` num só lugar: definições, R1–R5, evidências E1–E5, ato, L1–L3, ordem, cenários C01–C21 e P01–P20, riscos, alternativas descartadas e histórico de versões |
+| [Arquitetura e dados](docs/arquitetura-e-dados-v2.md) ([PDF](output/pdf/arquitetura-e-dados-v2.pdf)) | Contrato e respostas HTTP, modelo de dados, histórico que o motor lê, DICT e cache, fluxos do POST e da decisão, trava e idempotência, camadas |
+| [Testes e validação](docs/testes-e-validacao-v2.md) | Estratégia black box, exceções, o que cada arquivo cobre, resultados e limites |
+
+Os documentos das versões anteriores (política v1, módulo e guia v1.1, revisões v1.2 e v1.3, revisão dos testes) ficam preservados em [docs/historico/](docs/historico/).
