@@ -56,7 +56,7 @@ class TestMuleAccountRules:
 
         O DICT estava fora do ar quando o dinheiro entrou: nada foi guardado no
         cache. Se tivesse respondido (sem marcação), o pagador seria lido do cache
-        de 24 h e a marcação nova só valeria quando ele expirasse.
+        de 5 min e a marcação nova só valeria quando ele expirasse.
         """
         sender, marked = PixAccount(), PixAccount()
         DictMock.unavailable(marked)

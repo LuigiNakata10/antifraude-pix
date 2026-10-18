@@ -3,6 +3,6 @@ def assert_decision(response: dict, status: str, code: str) -> dict:
     assert response["status"] == status, response
     reason = response["metadata"]["reason"]
     assert reason["code"] == code, response
-    assert response["metadata"]["policy_version"] == "pix-v1.2"
+    assert response["metadata"]["policy_version"] == "pix-v1.3"
 
     return reason

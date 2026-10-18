@@ -5,11 +5,11 @@ from rules.context import PixContext
 from rules.decision import Decision, Status
 from rules.parameters import (
     ACCOUNT_AVERAGE_MULTIPLIER,
+    ACCOUNT_AVERAGE_REFERENCE_FLOOR,
     DAILY_LIMIT,
     DEVICE_WAIT,
     FREQUENCY_THRESHOLD,
     HIGH_AMOUNT,
-    MINIMUM_ACCOUNT_AVERAGE,
     NEW_ACCOUNT_AGE,
     NEW_ACCOUNT_LIMIT,
 )
@@ -40,7 +40,7 @@ def _first_applicable(context: PixContext, mule: laranja.MuleResult) -> Decision
     history = context.history
     projected_amount = history.approved_amount_24h + request.amount
 
-    account_is_new = request.transaction_date < request.source_opening_date + NEW_ACCOUNT_AGE
+    account_is_new = request.transaction_date - request.source_opening_date < NEW_ACCOUNT_AGE
     if account_is_new and projected_amount > NEW_ACCOUNT_LIMIT:
         return Decision(
             Status.REJECTED,
@@ -66,7 +66,7 @@ def _first_applicable(context: PixContext, mule: laranja.MuleResult) -> Decision
         return mule_decision
 
     first_approval = history.first_device_approved_at
-    device_is_known = first_approval is not None and request.transaction_date >= first_approval + DEVICE_WAIT
+    device_is_known = first_approval is not None and request.transaction_date - first_approval >= DEVICE_WAIT
     if not device_is_known and request.amount >= HIGH_AMOUNT:
         return Decision(
             Status.TWO_FACTOR_REQUIRED,
@@ -87,24 +87,24 @@ def _first_applicable(context: PixContext, mule: laranja.MuleResult) -> Decision
         )
 
     # média = soma / quantidade. Multiplicação cruzada evita arredondar
-    # frações de centavo e mantém as duas comparações estritas e exatas.
+    # frações de centavo e mantém a comparação estrita com a referência exata.
     approved_count = history.approved_count_total
     approved_total = history.approved_amount_total
+    reference_total = max(approved_total, ACCOUNT_AVERAGE_REFERENCE_FLOOR * approved_count)
     if (
         approved_count > 0
-        and approved_total > MINIMUM_ACCOUNT_AVERAGE * approved_count
-        and request.amount * approved_count > ACCOUNT_AVERAGE_MULTIPLIER * approved_total
+        and request.amount * approved_count > ACCOUNT_AVERAGE_MULTIPLIER * reference_total
     ):
         return Decision(
             Status.TWO_FACTOR_REQUIRED,
             ReasonCode.AMOUNT_ABOVE_ACCOUNT_AVERAGE,
-            "Confirmação adicional: o Pix supera dez vezes a média histórica aprovada da conta, que é maior que R$ 500.",
+            "Confirmação adicional: o Pix supera dez vezes a referência da conta, definida pelo maior entre a média aprovada e R$ 500.",
             observed_amount=request.amount,
             reason_extra={
                 "historical_total_amount": approved_total,
                 "historical_transaction_count": approved_count,
                 "average_multiplier": ACCOUNT_AVERAGE_MULTIPLIER,
-                "minimum_average_amount": MINIMUM_ACCOUNT_AVERAGE,
+                "reference_floor_amount": ACCOUNT_AVERAGE_REFERENCE_FLOOR,
             },
         )
 

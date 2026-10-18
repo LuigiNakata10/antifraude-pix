@@ -70,7 +70,7 @@ class TestDailyLimit:
 
     def test_c05_exactly_the_limit_is_approved(self):
         account = PixAccount()
-        account.make_device_known()
+        account.make_device_known(amount=2000 * REAL)
         account.send(17000 * REAL, -2 * HOUR, "approved")
 
         _, response = account.pix(3000 * REAL)
@@ -79,7 +79,7 @@ class TestDailyLimit:
 
     def test_c06_one_real_above_the_limit_is_rejected(self):
         account = PixAccount()
-        account.make_device_known()
+        account.make_device_known(amount=2000 * REAL)
         account.send(17000 * REAL, -2 * HOUR, "approved")
 
         _, response = account.pix(3001 * REAL)
@@ -91,7 +91,7 @@ class TestDailyLimit:
     def test_approval_exactly_24_hours_ago_is_out_of_the_window(self):
         """A janela é (t - 24h, t]: o aprovado em t - 24h exatos não conta."""
         account = PixAccount()
-        account.make_device_known(hours_ago=50)
+        account.make_device_known(hours_ago=50, amount=2000 * REAL)
         account.send(19000 * REAL, -24 * HOUR, "approved")
 
         _, response = account.pix(1500 * REAL)
@@ -100,7 +100,7 @@ class TestDailyLimit:
 
     def test_approval_one_second_inside_the_window_counts(self):
         account = PixAccount()
-        account.make_device_known(hours_ago=50)
+        account.make_device_known(hours_ago=50, amount=2000 * REAL)
         account.send(19000 * REAL, -24 * HOUR + SECOND, "approved")
 
         _, response = account.pix(1500 * REAL)
@@ -109,7 +109,7 @@ class TestDailyLimit:
 
     def test_rejected_pix_does_not_consume_the_limit(self):
         account = PixAccount()
-        account.make_device_known()
+        account.make_device_known(amount=2000 * REAL)
         account.send(19000 * REAL, -20 * MINUTE, "approved")
         account.send(2000 * REAL, -15 * MINUTE, "rejected")
 
@@ -144,7 +144,7 @@ class TestFrequency:
 
     def test_c08_rejected_attempts_also_count(self):
         account = PixAccount()
-        account.make_device_known()
+        account.make_device_known(amount=2000 * REAL)
         account.send(19000 * REAL, -100 * SECOND, "approved")
         account.send(2000 * REAL, -50 * SECOND, "rejected")
 
@@ -243,8 +243,8 @@ class TestNewDeviceHighAmount:
 
     def test_c19_after_the_initial_wait_a_recent_approval_does_not_restart_it(self):
         account = PixAccount()
-        account.send(100 * REAL, -26 * HOUR, "approved")
-        account.send(50 * REAL, -1 * HOUR, "approved")
+        account.send(1000 * REAL, -26 * HOUR, "approved")
+        account.send(1000 * REAL, -1 * HOUR, "approved")
 
         _, response = account.pix(6000 * REAL)
 
@@ -252,7 +252,7 @@ class TestNewDeviceHighAmount:
 
     def test_first_approval_exactly_24_hours_ago_makes_the_device_known(self):
         account = PixAccount()
-        account.send(100 * REAL, -24 * HOUR, "approved")
+        account.send(1000 * REAL, -24 * HOUR, "approved")
 
         _, response = account.pix(6000 * REAL)
 

@@ -1,6 +1,6 @@
-# [Nome do grupo]
+# Motor Antifraude Pix
 
-**Integrantes:** [nomes]
+**Integrantes:** Renan Correia e Luigi Nakata
 
 ## Como o motor de decisão funciona
 
@@ -10,7 +10,7 @@ A resposta contém `key`, `status` e `metadata`, com um único motivo. Os result
 
 ## Regras
 
-Política atual: **`pix-v1.2`**, na branch **`v3`**. Os valores chegam em centavos. As janelas usam `transaction_date` e o intervalo `(t − janela, t]`. Os parâmetros são escolhas iniciais do protótipo, sem calibração em dados reais.
+Política atual: **`pix-v1.3`**, na branch **`v3`**. Os valores chegam em centavos. As janelas usam `transaction_date` e o intervalo `(t − janela, t]`. Os parâmetros são escolhas iniciais do protótipo, sem calibração em dados reais.
 
 | Regra | Lógica | Parâmetros | Por quê |
 | --- | --- | --- | --- |
@@ -18,14 +18,14 @@ Política atual: **`pix-v1.2`**, na branch **`v3`**. Os valores chegam em centav
 | R2 — teto geral | Rejeitar quando o acumulado aprovado + atual ultrapassar o teto geral | R$ 20.000 em 24h | Limitar a exposição e permitir que R5 solicite 2FA antes do teto, sem depender de renda ou saldo ausentes do contrato |
 | R3 — frequência | Pedir 2FA na terceira tentativa distinta ou posterior | 3 solicitações em 2 minutos | Tolerar duas operações próximas e exigir confirmação em uma rajada |
 | R4 — aparelho e valor | Pedir 2FA em valor alto sem aparelho familiar | Pix ≥ R$ 5.000; familiaridade após 24h da primeira aprovação naquele aparelho e conta | Combinar exposição relevante e falta de histórico; uma aprovação pequena não libera valores altos imediatamente |
-| R5 — desvio da média | Pedir 2FA quando o Pix superar 10 vezes a média histórica aprovada da conta | Média **maior que R$ 500**; Pix **maior que 10 × média** | Identificar aumento acentuado do valor, inclusive em aparelho conhecido; o piso se aplica à média, não ao Pix atual |
+| R5 — desvio da média | Pedir 2FA quando o Pix superar 10 vezes a referência da conta | Referência = **maior entre média aprovada e R$ 500**; exige aprovação anterior; comparação estrita | Identificar desvio em aparelho conhecido, sem desativar a regra quando pagamentos pequenos reduzem a média |
 | L1 — destino | Rejeitar destino em suspeita elevada sem relacionamento anterior às evidências | Classificação abaixo; aprovação prévia para o mesmo titular antes do início conhecido da evidência | Proteger novos pagadores, mantendo uma exceção limitada para relacionamentos anteriores |
 | L2 — pagador | Rejeitar pagador em suspeita elevada quando o ato não for gasto típico | Inclui repasse aparente e outros atos | Restringir saídas de maior risco, preservando pagamentos cotidianos limitados |
 | L3 — repasse | Rejeitar conta suspeita que realiza repasse aparente | Classificação e ato definidos abaixo | Combinar sinais da conta e movimentação, sem recusar todo pagamento da conta suspeita |
 
 Somente aprovações consomem os tetos e alimentam os fluxos e vínculos. R3 conta os três resultados, sem contar reenvios ou entradas inválidas. Os limites são por conta pagadora; valores exatamente no teto de R1/R2 passam.
 
-R5 usa a soma dividida pela quantidade de **todos os Pix enviados e aprovados observados até `transaction_date`**, sem incluir o atual, recebimentos ou reenvios. Não é uma média diária. Sem histórico ou com média de até R$ 500, R5 não atua. Com média de R$ 600, R$ 6.000 não aciona R5 e R$ 6.000,01 solicita 2FA. O motivo informa soma, quantidade e parâmetros, sem arredondar a média para decidir.
+R5 calcula a média de **todos os Pix enviados e aprovados observados até `transaction_date`**, sem incluir o atual, recebimentos ou reenvios. Não é uma média diária. Sem aprovação anterior, R5 não atua. Com média de R$ 600, o limiar de 2FA é R$ 6.000; se a média cair para R$ 300,50, a referência fica em R$ 500 e o limiar em R$ 5.000. Igualdade não aciona R5. Esses valores são limiares de confirmação; o teto de rejeição continua em R$ 20.000 acumulados em 24h. O cálculo usa soma e quantidade sem arredondar a média.
 
 ### Classificação de possível laranja
 
@@ -53,7 +53,7 @@ Repasse prevalece mesmo para destinatário conhecido. Relacionamento anterior ex
 
 Rejeições precedem 2FA. O módulo de laranja não pede segundo fator: o próprio operador pode confirmá-lo. `two_factor_required` não consome limite nem cria familiaridade; a conclusão do 2FA fica fora desta API.
 
-O DICT é um **mock**: consultas em paralelo, prazo de 200 ms, antes da trava. O pagador usa cache de 24h; o destino é consultado ao vivo, com reserva de cache de 1h. Falha sem cache válido deixa E1/E4 desconhecidas e a política continua com os sinais disponíveis.
+O DICT é um **mock**: consultas em paralelo, prazo de 200 ms, antes da trava. O pagador usa cache de **5 minutos desde a consulta**, sem renovar na leitura; a primeira análise após expirar consulta novamente. O destino continua ao vivo, com reserva de cache de 1h. Falha sem cache válido deixa E1/E4 desconhecidas e a política continua com os sinais disponíveis.
 
 O histórico cobre apenas análises observadas, não liquidação. Cache pode atrasar marcações; autenticação válida, relação anterior ou CNPJ antigo não garantem pagamento legítimo. Sem liquidação, cadastro ou fonte externa real, esta versão é um protótipo de decisão.
 
@@ -77,7 +77,7 @@ docker compose exec -T db psql -U bootcamp -d bootcamp -v ON_ERROR_STOP=1 -f /mi
 docker compose up --build -d --wait
 ```
 
-A validação da v3 teve **254 testes aprovados**, cobrindo contrato, regras base, média histórica, cenários de laranja, idempotência, concorrência e rollback. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; inconsistência de datas, identidade ou ordem retorna 422. Falha técnica retorna erro, sem virar decisão antifraude.
+A validação teve **271 testes aprovados**, cobrindo contrato, regras base, média histórica, cenários de laranja, idempotência, concorrência e rollback. O GET preserva a resposta original; reenvio equivalente retorna 200, conflito de ID retorna 409. Entrada fora do formato retorna 400; datas não suportadas, identidade ou ordem incoerente e Pix para a mesma conta retornam 422. Contas distintas do mesmo titular continuam permitidas. Falha técnica retorna erro, sem virar decisão antifraude.
 
 Para executar a demo e gerar o grafo:
 
@@ -86,4 +86,4 @@ docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/de
 docker compose --profile test run --rm --no-deps -v ./output/demo:/app/output/demo tests python scripts/graph_demo.py
 ```
 
-A demo verifica sete decisões com dados fictícios. A [revisão v1.2](docs/regra-desvio-de-valor-v1.2.md) detalha R5 e o novo teto. A [nota de integração](docs/integracao-motor-v1.1.md) e o [guia v1.1](docs/guia-de-desenvolvimento-v1.1.md) preservam o desenho anterior.
+A demo verifica sete decisões com dados fictícios. A [revisão v1.3](docs/revisao-e-justificativas-v1.3.md) explica as correções, os custos de fricção e a exceção mantida para CNPJ antigo. A [v1.2](docs/regra-desvio-de-valor-v1.2.md), a [nota de integração](docs/integracao-motor-v1.1.md) e o [guia v1.1](docs/guia-de-desenvolvimento-v1.1.md) preservam as decisões anteriores.

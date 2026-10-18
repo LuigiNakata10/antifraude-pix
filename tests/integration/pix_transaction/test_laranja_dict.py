@@ -114,7 +114,7 @@ class TestDictUnavailable:
 
 
 class TestDictCache:
-    """O pagador é lido do cache (24 h); o destino é consultado ao vivo e o cache só o socorre."""
+    """O pagador é lido do cache (5 min); o destino é consultado ao vivo e o cache só o socorre."""
 
     def test_the_payer_is_read_from_the_cache_after_the_first_pix(self):
         """Uma consulta ao vivo guarda uma linha em `dict_lookup`; ler o cache não guarda nenhuma."""

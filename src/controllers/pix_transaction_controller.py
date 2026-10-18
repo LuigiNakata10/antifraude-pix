@@ -14,12 +14,14 @@ from errors import (
     InconsistentAccountIdentity,
     NotFoundPixAnalysis,
     OutOfOrderTransaction,
+    SameAccountTransaction,
     TransactionIdConflict,
 )
 from models import PayerAccount, PixAnalysis
 from repositories import PayerAccountRepository, PixAnalysisRepository
 from rules import PixRequest, decide
 from rules.laranja import dict_signals
+from rules.parameters import MAX_HISTORY_WINDOW
 from utils.payload_normalizer import normalize_payload, validate_text
 
 
@@ -187,10 +189,20 @@ class PixTransactionController(BaseController):
         source_opening_date = parse_date("source_account.opening_date", source["opening_date"])
         destination_opening_date = parse_date("destination_account.opening_date", destination["opening_date"])
 
+        if transaction_date < datetime.min.replace(tzinfo=timezone.utc) + MAX_HISTORY_WINDOW:
+            raise InvalidTransactionDate("transaction_date", payload["transaction_date"])
+
         if source_opening_date > transaction_date:
             raise AccountOpenedAfterTransaction("source")
         if destination_opening_date > transaction_date:
             raise AccountOpenedAfterTransaction("destination")
+
+        if (
+            destination["participant"] == INSTITUTION_ISPB
+            and destination["branch"] == source["branch"]
+            and destination["account_number"] == source["account_number"]
+        ):
+            raise SameAccountTransaction()
 
         return PixRequest(
             transaction_id=payload["id"],
@@ -216,7 +228,7 @@ def parse_date(field: str, value: str) -> datetime:
     """
     try:
         return datetime.fromisoformat(value).astimezone(timezone.utc)
-    except ValueError:
+    except (ValueError, OverflowError):
         raise InvalidTransactionDate(field, value) from None
 
 

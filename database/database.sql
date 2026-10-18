@@ -131,8 +131,8 @@ CREATE INDEX account_link_to_idx ON account_link (to_key, link_type, seen_at);
 CREATE INDEX account_link_from_idx ON account_link (from_key, link_type, seen_at);
 
 -- O cache do DICT, também append-only: cada consulta que respondeu é uma linha,
--- e quem lê usa a MAIS RECENTE dentro da validade (destino 1 hora, pagador 24
--- horas). Consulta que falhou não entra: indisponível vira "desconhecido".
+-- e quem lê usa a MAIS RECENTE dentro da validade (destino 1 hora, pagador 5
+-- minutos). Consulta que falhou não entra: indisponível vira "desconhecido".
 CREATE TABLE dict_lookup(
     id                              BIGSERIAL PRIMARY KEY,
     account_key                     TEXT NOT NULL,

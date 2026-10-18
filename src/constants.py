@@ -33,10 +33,10 @@ DICT_API_TIMEOUT = float(os.environ.get("DICT_API_TIMEOUT", "0.2"))
 INSTITUTION_ISPB = os.environ.get("INSTITUTION_ISPB", "99999999")
 
 # Quanto tempo uma resposta do DICT guardada em `dict_lookup` vale. É frescor
-# TÉCNICO (relógio do servidor), não regra de negócio. O pagador é cliente do
-# banco e muda pouco: 24 h. O destino é consultado ao vivo a cada Pix e o cache
-# só serve de reserva se o DICT falhar: 1 h.
-DICT_PAYER_CACHE_TTL_SECONDS = 24 * 3600
+# TÉCNICO (relógio do servidor), não regra de negócio. O pagador usa 5 minutos,
+# sem renovar a validade na leitura: equilibra consultas e atraso de marcações.
+# O destino é consultado ao vivo a cada Pix; seu cache só socorre falhas por 1 h.
+DICT_PAYER_CACHE_TTL_SECONDS = 5 * 60
 DICT_DESTINATION_CACHE_TTL_SECONDS = 3600
 
 # Rotas públicas: não exigem o header INTERNAL-TOKEN. São as duas que

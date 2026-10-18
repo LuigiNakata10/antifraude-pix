@@ -14,13 +14,13 @@ AVERAGE_REASON = "AMOUNT_ABOVE_ACCOUNT_AVERAGE"
 
 
 class TestAccountAverage:
-    """R5: média histórica acima de R$ 500 E Pix acima de dez vezes essa média."""
+    """R5: Pix acima de dez vezes o maior entre a média histórica e R$ 500."""
 
     @pytest.mark.parametrize(
         "history,amount,expected",
         [
-            ([400 * REAL], 9000 * REAL, "approved"),
-            ([500 * REAL], 9000 * REAL, "approved"),
+            ([400 * REAL], 9000 * REAL, "two_factor_required"),
+            ([500 * REAL], 9000 * REAL, "two_factor_required"),
             ([50001], 500010, "approved"),
             ([50001], 500011, "two_factor_required"),
             ([600 * REAL], 6000 * REAL - 1, "approved"),
@@ -33,7 +33,7 @@ class TestAccountAverage:
              "above-floor-above-ten-times", "below-ten-times", "exact-ten-times", "above-ten-times",
              "fractional-average-equal", "fractional-average-above"],
     )
-    def test_both_thresholds_are_strict_and_the_average_is_not_rounded(self, history, amount, expected):
+    def test_reference_uses_the_floor_and_the_average_is_not_rounded(self, history, amount, expected):
         account = PixAccount()
         for index, previous_amount in enumerate(history):
             account.send(previous_amount, -(len(history) - index) * DAY, "approved")
@@ -68,7 +68,7 @@ class TestAccountAverage:
         assert reason["historical_total_amount"] == 300000
         assert reason["historical_transaction_count"] == 2
         assert reason["average_multiplier"] == 10
-        assert reason["minimum_average_amount"] == 50000
+        assert reason["reference_floor_amount"] == 50000
 
     def test_all_observed_approved_history_counts_even_outside_24_hours(self):
         account = PixAccount()
@@ -193,7 +193,7 @@ class TestRaisedDailyLimit:
     @pytest.mark.parametrize("amount,expected", [(20000 * REAL, "approved"), (20000 * REAL + 1, "rejected")])
     def test_the_twenty_thousand_limit_is_inclusive(self, amount, expected):
         account = PixAccount()
-        account.make_device_known()
+        account.make_device_known(amount=2000 * REAL)
 
         _, response = account.pix(amount)
 

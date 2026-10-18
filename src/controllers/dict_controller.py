@@ -25,8 +25,8 @@ class DictObservation:
 class DictController(BaseController):
     """Decide de onde vem a resposta do DICT: ao vivo ou do cache.
 
-    - O PAGADOR é cliente do banco e muda pouco: lido do cache de 24 h, e só
-      consultado no primeiro Pix ou quando o cache expira.
+    - O PAGADOR é lido do cache de 5 minutos, sem renovar fetched_at na leitura;
+      é consultado no primeiro Pix ou na primeira análise após a expiração.
     - O DESTINO é sempre consultado AO VIVO, para uma marcação nova valer no
       Pix seguinte; o cache de 1 h só o socorre se o DICT falhar.
     - Quando as duas consultas são necessárias, rodam em paralelo, com um único

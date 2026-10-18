@@ -123,11 +123,14 @@ class PixAccount:
 
         return sender
 
-    def make_device_known(self, device_id: str = None, hours_ago: int = 30) -> None:
+    def make_device_known(self, device_id: str = None, hours_ago: int = 30, amount: int = 1000 * 100) -> None:
         """Faz o aparelho da conta virar conhecido: primeira aprovação há `hours_ago` horas.
 
         Os 30 h padrão passam das 24 h de espera. Quem precisa de um Pix de
         histórico a 24 h do instante BASE pede mais (ex.: 50), para o aparelho
         já ser conhecido NAQUELE momento.
+
+        O valor pode ser escolhido para não acionar R5 em cenários de outras
+        regras: R$ 1.000 por padrão; R$ 2.000 nos testes do teto de R$ 20.000.
         """
-        self.send(1000, timedelta(hours=-hours_ago), "approved", device_id=device_id)
+        self.send(amount, timedelta(hours=-hours_ago), "approved", device_id=device_id)

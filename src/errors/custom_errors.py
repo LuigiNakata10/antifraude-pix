@@ -1,6 +1,17 @@
 from errors import QIException
 
 
+class SameAccountTransaction(QIException):
+    """A origem e o destino identificam a mesma conta, não duas contas do mesmo titular."""
+
+    code = "QIT003008"
+
+    def __init__(self) -> None:
+        super().__init__("Same Account Transaction", self.code, 422,
+                         "The source and destination must be different accounts.",
+                         "A conta de origem e a conta de destino devem ser diferentes.")
+
+
 class InconsistentAccountIdentity(QIException):
     code = "QIT003007"
 
@@ -11,7 +22,7 @@ class InconsistentAccountIdentity(QIException):
 
 
 class InvalidTransactionDate(QIException):
-    """A data tem o formato certo, mas não existe no calendário (30 de fevereiro, 25h).
+    """A data não existe no calendário ou não comporta a conversão UTC/janelas do motor.
 
     422, e não 400: a API leu e entendeu o pedido; é o valor que não pode existir.
     O schema sabe contar dígitos, não dias.
@@ -22,8 +33,8 @@ class InvalidTransactionDate(QIException):
     def __init__(self, field, value) -> None:
         title = "Invalid Date"
         http_status = 422
-        description = f"The value {value} in {field} is not a valid date and time."
-        translation = f"O valor {value} em {field} não é uma data e hora válida."
+        description = f"The value {value} in {field} is not a supported date and time."
+        translation = f"O valor {value} em {field} não é uma data e hora suportada pelo motor."
         super().__init__(title, self.code, http_status, description, translation)
 
 

@@ -5,7 +5,7 @@ from datetime import timedelta
 # pelos bancos. Todos os valores são em centavos. Cada um tem o porquê ao lado.
 
 # Versão dos parâmetros e da ordem das regras: vai em todo `metadata`.
-POLICY_VERSION = "pix-v1.2"
+POLICY_VERSION = "pix-v1.3"
 
 # R1 — conta pagadora nova.
 # Menos de 7 dias completos entre a abertura e o Pix. Com exatamente 7 dias a
@@ -39,10 +39,11 @@ DEVICE_WAIT = timedelta(hours=24)
 
 # R5 — desvio do valor habitual da conta pagadora.
 # A média usa todos os Pix enviados e aprovados observados até a transação,
-# sem incluir o pedido atual. Só atua se a MÉDIA for maior que R$ 500;
-# nesse caso, um Pix acima de 10 vezes a média pede 2FA, inclusive em aparelho conhecido.
-# Sem aprovações anteriores, não há média. Os dois limites são estritos (>).
-MINIMUM_ACCOUNT_AVERAGE = 500 * 100
+# sem incluir o pedido atual. A referência é o maior entre a média e R$ 500:
+# um pagamento pequeno não desliga a proteção ao derrubar a média abaixo do piso.
+# Um Pix acima de 10 vezes a referência pede 2FA, inclusive em aparelho conhecido.
+# Sem aprovações anteriores, a regra não atua. O limite é estrito (>).
+ACCOUNT_AVERAGE_REFERENCE_FLOOR = 500 * 100
 ACCOUNT_AVERAGE_MULTIPLIER = 10
 
 # ---------------------------------------------------------------------------
@@ -105,3 +106,7 @@ E5_WINDOW = timedelta(hours=24)
 # se disfarçar de "gasto" numa empresa de fachada recém-aberta. Repasse é avaliado primeiro.
 TYPICAL_SPEND_LIMIT = 1000 * 100
 ESTABLISHED_CNPJ_AGE = timedelta(days=90)
+
+# O mínimo técnico de transaction_date precisa comportar todos os recuos,
+# sem ultrapassar datetime.min. Idades são diferenças, não subtrações de janela.
+MAX_HISTORY_WINDOW = max(DAILY_WINDOW, FREQUENCY_WINDOW, E2_WINDOW, E3_WINDOW, E5_WINDOW, REPASSE_WINDOW)
