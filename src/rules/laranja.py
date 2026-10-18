@@ -256,12 +256,13 @@ def mule_decision(result: MuleResult) -> Optional[Decision]:
 
 
 def _observed(signals: DictSignals, flows: AccountFlows, document: str) -> dict:
+    is_company = len(document) == 14
     return {**signals.observed,
             "E2": {"incoming_amount_30d": flows.received_30d, "marked_incoming_amount_30d": flows.received_30d_from_e1,
                    "shared_marked_device": flows.shares_device_with_e1, "counterparties_30d": flows.counterparties},
             "E3": {"holders_1h": flows.holders_1h, "new_holders_1h": flows.first_time_holders_1h,
-                   "holder_threshold": E3_HOLDERS_COMPANY if len(document) == 14 else E3_HOLDERS,
-                   "new_holder_threshold": E3_FIRST_TIME_HOLDERS},
+                   "holder_threshold": E3_HOLDERS_COMPANY if is_company else E3_HOLDERS,
+                   "new_holder_threshold": E3_FIRST_TIME_HOLDERS_COMPANY if is_company else E3_FIRST_TIME_HOLDERS},
             "E5": {"incoming_amount_24h": flows.received_24h, "holders_24h": flows.holders_24h}}
 
 
