@@ -109,7 +109,7 @@ O repasse prevalece mesmo para destinatário conhecido: o padrão observado de e
 
 Existe relação anterior quando o pagador tem aprovação para o mesmo titular de destino **com data anterior ao início da evidência** do destino. É a mãe que já mandava a mesada antes de o filho virar laranja.
 
-- O início da evidência vem **só de data explícita da fonte** (a extensão `EvidenceSince` do mock, para E1 e E4). Nunca é deduzido da data da consulta nem do início de uma janela.
+- O início da evidência vem **só de data explícita da fonte** (a extensão `EvidenceSince` do mock: a data de E1 é usada; a de E4 é validada, mas não usada, porque E4 só eleva o estado junto de E2, cujo início não é datado). Nunca é deduzido da data da consulta nem do início de uma janela.
 - Sem data conhecida, inclusive em E2 + E4, a exceção **não é presumida**: o destino elevado é tratado como primeira relação.
 - Uma "relação" pode ter sido fabricada antes do golpe; exigir anterioridade à evidência reduz, mas não elimina esse risco, que é aceito.
 
@@ -237,6 +237,7 @@ Pressupõem que R1 a R4 não se aplicam, salvo quando indicado.
 - Saídas de até R$ 1.000 podem passar como gasto típico quando não configuram repasse; repasse para CNPJ antigo escapa da definição. R2 e R3 continuam valendo.
 - A laranja que só aparece em outros bancos, sem marcação no DICT, não é vista: o motor só enxerga os Pix que passam por ele.
 - A marcação nova de um pagador pode levar até 5 minutos para valer (cache).
+- A identidade de uma conta (titular e data de abertura) fica fixada pela primeira análise que a cita, de qualquer status. Se o sistema chamador mandar um dado errado uma vez, os Pix seguintes dessa conta recebem 422 `QIT003007`, e a API não oferece como corrigir o cadastro.
 - O histórico prova decisões do motor, não liquidação; o repasse é "aparente".
 - Todos os parâmetros são do protótipo e precisariam de dados reais, perdas e fricção medidas para calibrar.
 

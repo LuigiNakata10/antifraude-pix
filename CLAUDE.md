@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Desafio do Bootcamp QI Tech 2026: motor antifraude Pix. Toda a documentação e os commits do time são em português; mantenha isso.
 
-O código parte da `main` do Base Service (`bootcamp-base-api`, cópia sem histórico). A política em vigor é a **`pix-v1.3`** (`POLICY_VERSION` em `src/rules/parameters.py`), na branch `v3`: POST e GET, trava por conta pagadora, idempotência (200/409), regras base R1–R5 e o módulo de conta laranja (DICT simulado com cache, grafo de contas, E1–E5, ato, L1–L3), com 254 testes e os scripts da demo. Não há `NotImplementedError` em `src/`.
+O código parte da `main` do Base Service (`bootcamp-base-api`, cópia sem histórico). A política em vigor é a **`pix-v1.3`** (`POLICY_VERSION` em `src/rules/parameters.py`), na branch `v3`: POST e GET, trava por conta pagadora, idempotência (200/409), regras base R1–R5 e o módulo de conta laranja (DICT simulado com cache, grafo de contas, E1–E5, ato, L1–L3), com 262 testes e os scripts da demo. Não há `NotImplementedError` em `src/`.
 
 ## Documentos
 
@@ -69,7 +69,8 @@ docker compose down -v                                                 # obrigat
 ## Testes
 
 - Black box por HTTP, sem importar `src/`; cada teste cria contas novas e monta o histórico pelo POST, com o DICT roteirizado por conta (`tests/utils/dict_mock.py`).
-- Exceções conscientes (só onde a informação nunca volta na resposta): leitura de `analysis_details`/colunas do DICT e controle do `fetched_at` em `dict_lookup` (`tests/utils/db_utils.py`), e o gatilho de falha de gravação em `test_persistence.py`.
+- Exceções conscientes (só onde a informação nunca volta na resposta): leitura de `analysis_details`/colunas do DICT e controle do `fetched_at` em `dict_lookup` (`tests/utils/db_utils.py`), o gatilho de falha de gravação e a trava de `payer_account` segurada numa conexão direta (para provar o 503), ambos em `test_persistence.py`.
+- Um *fixture* de sessão (`tests/conftest.py`, `tests/utils/warm_up.py`) espera o Mockserver responder rápido antes da primeira conta: ele não tem healthcheck, e as primeiras respostas passam dos 200 ms que o motor espera pelo DICT. A demo faz o mesmo.
 - **Não use o log do Mockserver** (`retrieve`/`clear` degradam com o volume).
 - Os cenários de outras regras começam o histórico com uma aprovação de valor compatível com a R5, para ela não esconder o que o teste verifica.
 

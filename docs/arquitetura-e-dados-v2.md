@@ -156,7 +156,7 @@ erDiagram
 | status, reason_code | TEXT, CHECK | os três resultados e os nove códigos de motivo |
 | policy_version, metadata | TEXT, JSONB | versão e explicação devolvidas no POST e no GET |
 
-**Identidade da conta.** O payload só informa o ISPB do destino. A conta pagadora é sempre desta instituição, identificada pela variável `INSTITUTION_ISPB` (fictícia, 99999999); a chave `ispb:agência:conta` reconhece a mesma conta como pagadora e como destino. CPF/CNPJ nunca substitui a identidade da conta, e titular ou abertura divergentes do histórico são recusados (422).
+**Identidade da conta.** O payload só informa o ISPB do destino. A conta pagadora é sempre desta instituição, identificada pela variável `INSTITUTION_ISPB` (fictícia, 99999999); a chave `ispb:agência:conta` reconhece a mesma conta como pagadora e como destino. CPF/CNPJ nunca substitui a identidade da conta, e titular ou abertura divergentes do histórico são recusados (422). **Limitação:** a identidade fica fixada pela primeira análise que cita a conta, de qualquer status; um dado errado enviado uma vez faz os pedidos seguintes dessa conta darem 422, sem correção pela API.
 
 **Índices:** `(payer_account_id, transaction_date)` para as janelas; parcial `(payer_account_id, device_id, transaction_date) WHERE status = 'approved'` para a primeira aprovação do aparelho; `(destination_key, transaction_date)` e `(payer_account_id, destination_document, transaction_date)` para o módulo; `account_link (to_key, link_type, seen_at)` e `(from_key, link_type, seen_at)` para seguir o dinheiro nos dois sentidos.
 
@@ -199,7 +199,7 @@ Idades e esperas são calculadas como diferença entre datas, para não estourar
 
 # 4. DICT simulado e cache
 
-O DICT é um Mockserver no docker compose, com respostas em `mocks/dict_expectations.json` (por padrão, nenhuma conta marcada). Ele segue, de forma simplificada, a estrutura da seção Antifraude da [API do DICT](https://www.bcb.gov.br/content/estabilidadefinanceira/pix/API-DICT.html); não é uma reprodução oficial. A extensão `EvidenceSince`, própria do mock, pode informar a data de início de E1 e E4.
+O DICT é um Mockserver no docker compose, com respostas em `mocks/dict_expectations.json` (por padrão, nenhuma conta marcada). Ele segue, de forma simplificada, a estrutura da seção Antifraude da [API do DICT](https://www.bcb.gov.br/content/estabilidadefinanceira/pix/API-DICT.html); não é uma reprodução oficial. A extensão `EvidenceSince`, própria do mock, informa a data de início de E1. A de E4 é aceita no formato, mas o motor não a usa: E4 só eleva o estado junto de E2, cujo início não é datado.
 
 | Tema | Decisão | Por quê |
 |---|---|---|

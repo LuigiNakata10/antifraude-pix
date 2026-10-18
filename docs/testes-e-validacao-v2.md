@@ -50,24 +50,24 @@ Em `tests/integration/`:
 | `pix_transaction/test_account_average.py` | R5: piso, igualdade, média fracionária, sem histórico, exclusões (Pix atual, rejeições, 2FA, recebimentos, reenvios), separação por conta, precedência | 23 |
 | `pix_transaction/test_idempotency.py` | Reenvio equivalente (ordem de chaves, fuso, documento sem pontuação) dá 200; cada campo diferente dá 409; reenvio não conta nem consome limite | 20 |
 | `pix_transaction/test_v11.py` | Texto inválido, P14–P19, aparelho compartilhado com aprovações das duas contas, arestas só de aprovações, identidade da conta, reputação em 30 dias | 21 |
-| `pix_transaction/test_laranja_dict.py` | E1 por marcação e por duas instituições, E4, timeout, 429, corpo inesperado, cache de reserva do destino, DICT fora do ar | 19 |
+| `pix_transaction/test_laranja_dict.py` | E1 por marcação e por duas instituições, E4, timeout, 429, corpo inesperado, cache de reserva do destino, DICT fora do ar; início da evidência (`EvidenceSince`): sem data não há relação anterior, data igual ao Pix é aceita, data posterior, sem fuso ou ilegível torna a resposta desconhecida | 24 |
 | `pix_transaction/test_laranja.py` | Cenários P01–P13 | 15 |
 | `pix_transaction/test_laranja_ato.py` | Gasto típico no limite de R$ 1.000, CNPJ de 90 dias, repasse em 50% e no mínimo de entradas, exceção do CNPJ antigo | 15 |
 | `pix_transaction/test_v13.py` | Piso da R5, Pix para a mesma conta, contas do mesmo titular, datas extremas, expiração do cache do pagador | 15 |
-| `pix_transaction/test_laranja_grafo.py` | Direção do dinheiro (P20), reputação de 9 e 10 contrapartes, proporção, expiração, um salto, aparelho compartilhado, E3 de PF e CNPJ, E2 + E4 (P15) | 14 |
+| `pix_transaction/test_laranja_grafo.py` | Direção do dinheiro (P20), reputação de 9 e 10 contrapartes, proporção, expiração (29 e 31 dias e a borda exata de 30 dias), um salto, aparelho compartilhado, E3 de PF e CNPJ, E2 + E4 (P15) | 16 |
 | `pix_transaction/test_concurrency.py` | Dois Pix simultâneos não furam o teto; a terceira tentativa enxerga as anteriores; o mesmo id em paralelo grava uma vez | 5 |
-| `pix_transaction/test_persistence.py` | Os três status ficam gravados e o GET devolve o mesmo envelope; falha de gravação não deixa nada | 4 |
+| `pix_transaction/test_persistence.py` | Os três status ficam gravados e o GET devolve o mesmo envelope; falha de gravação não deixa nada; conta presa por outro pedido além de 5 s devolve 503 com `Retry-After` e a repetição funciona | 5 |
 | `pix_transaction/test_laranja_concorrencia.py` | Repasses simultâneos enxergam os anteriores; pagamentos simultâneos a conta marcada gravados uma vez cada | 2 |
 | `test_healthcheck.py` | Disponibilidade do `/health_check` | 1 |
-| **Total** | | **254** |
+| **Total** | | **262** |
 
 ## Resultado
 
-- **254 testes aprovados**, em cerca de 40 segundos, pelo comando do README.
+- **262 testes aprovados**, em cerca de 40 segundos, pelo comando do README, num projeto compose novo, **com a 5432 ocupada no host** (o banco e o mock não publicam portas).
 - **flake8** limpo em `src`, `tests` e `scripts`.
 - **Demo:** `scripts/seed_demo.py` confere 7 de 7 decisões esperadas; `scripts/graph_demo.py` desenha o grafo (`docs/img/grafo-demo-v2.png`).
-- **Concorrência:** com a trava por conta removida, os testes de concorrência falham; com ela, passam. A verificação foi feita durante o desenvolvimento, para garantir que esses testes não passam por acaso.
-- **Compatibilidade:** análises gravadas em `pix-v1.1` e `pix-v1.2` continuam sendo devolvidas com a versão e o motivo originais pelo GET e pelos reenvios.
+- **Mutações:** os testes de concorrência falham sem a trava por conta; o do 503 falha (500 em vez de 503) sem a conversão do timeout; os de `EvidenceSince` falham sem as validações de data; o da borda de 30 dias falha com a janela inclusiva. Verificado durante o desenvolvimento, para garantir que esses testes não passam por acaso.
+- **Compatibilidade entre versões (verificada manualmente, sem teste automatizado):** na revisão v1.3, análises gravadas em `pix-v1.1` e `pix-v1.2` foram consultadas e reenviadas e mantiveram a versão e o motivo originais. O registro está em [revisao-e-justificativas-v1.3.md](historico/revisao-e-justificativas-v1.3.md). Um teste automatizado exigiria trocar o código em execução.
 
 ## O que a suíte não prova
 
