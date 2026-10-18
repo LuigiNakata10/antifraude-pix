@@ -6,6 +6,7 @@ import pytest
 from tests.utils import DbUtils, DictMock, PixAccount, PixDestination, RandomGenerator, RequestGenerator
 from tests.utils.assertions import assert_decision
 from tests.utils.dict_mock import statistics
+from tests.utils.pix_account import at
 
 REAL = 100
 DAY = timedelta(days=1)
@@ -161,3 +162,43 @@ class TestDictCache:
 
         assert status == 201
         assert_decision(response, "two_factor_required", "NEW_DEVICE_HIGH_AMOUNT")
+
+
+class TestEvidenceStart:
+    """A relação anterior só vale com a data explícita do início da evidência (`EvidenceSince`)."""
+
+    def test_a_marked_recipient_without_a_start_date_gets_no_prior_relationship(self):
+        """Sem data de início, a exceção da mãe não é presumida: o mesmo Pix que no P01 passa, aqui é barrado."""
+        mother, son = PixAccount(), PixDestination()
+        mother.send(100 * REAL, -10 * DAY, "approved", destination=son)
+        DictMock.mark(son, mule=1)
+
+        _, response = mother.pix(100 * REAL, destination=son)
+
+        assert_decision(response, "rejected", "MULE_DESTINATION")
+
+    def test_a_start_date_equal_to_the_transaction_date_is_accepted(self):
+        mother, son = PixAccount(), PixDestination()
+        mother.send(100 * REAL, -10 * DAY, "approved", destination=son)
+        DictMock.mark(son, mule=1, e1_since=at())
+
+        _, response = mother.pix(100 * REAL, destination=son)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+
+    @pytest.mark.parametrize(
+        "e1_since",
+        [at(DAY), at(-DAY)[:19], "ontem"],
+        ids=["after-the-transaction", "without-timezone", "not-a-date"],
+    )
+    def test_an_invalid_start_date_makes_the_answer_unavailable(self, e1_since):
+        """Início posterior ao Pix, sem fuso ou ilegível: a resposta inteira vira desconhecida, e vale o resto da política."""
+        victim, recipient = PixAccount(), PixDestination()
+        DictMock.mark(recipient, mule=1, e1_since=e1_since)
+
+        response, transaction_id = send(victim, 100 * REAL, destination=recipient)
+
+        assert_decision(response, "approved", "POLICY_PASSED")
+        row = DbUtils.analysis_row(transaction_id)
+        assert row["analysis_details"]["dict_status"]["destination"] == "indisponivel"
+        assert row["destination_dict_e1"] is None
